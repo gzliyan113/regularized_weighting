@@ -1,3 +1,5 @@
+This is research code, no guarantees are implied.
+
 Install instructions:
 - Download and install: http://cvxopt.org
 - Download and install: http://scikit-learn.org/stable/install.html 
