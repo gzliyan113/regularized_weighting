@@ -171,7 +171,7 @@ def weightsForMultipleLosses2OldPrimalDual(L, alpha, l2=None, W=None, maxPrimalI
     for i in xrange(maxIters):
         report(i, W, l2, None)
         primal = penalizedMultipleWeightedLoss2(L, W, alpha)
-        dual = dual1value(L, alpha, l2)
+        dual = dual1value(L, alpha, ones(k) / k, l2)
         #print('Primal - dual = gap; %g - %g = %g' % (primal,dual,primal - dual))
         if primal - dual > dualityGapGoal:
             l2 = dual1solve5(L, alpha, fixedLowerBound=-primal, lambda2=l2, maxIters=10)
@@ -180,7 +180,7 @@ def weightsForMultipleLosses2OldPrimalDual(L, alpha, l2=None, W=None, maxPrimalI
                                                maxIters=primalItersPerRound)
         else:
             primal = penalizedMultipleWeightedLoss2(L, W, alpha)
-            dual = dual1value(L, alpha, l2)
+            dual = dual1value(L, alpha, ones(k) / k, l2)
             #print('Achieved primal - dual = gap: %g - %g = %g' % (primal,dual,primal - dual))
             return W
             #print('Ran out at primal - dual = gap: %g - %g = %g' % (primal,dual,primal - dual))
@@ -199,24 +199,25 @@ def timedLambda(timeSoFar, lam):
     return (time() - startTime + timeSoFar, item)
 
 
-def weightsForMultipleLosses2TimedStreams(L, alpha, l2=None, W=None, maxPrimalIters=900, maxIters=None,
+def weightsForMultipleLosses2TimedStreams(L, alpha, eta=None, l2=None, W=None, maxPrimalIters=900, maxIters=None,
                                           dualityGapGoal=1e-6, report=nop):
     '''Combine calls to primal and dual optimizers to get certified solution.'''
     k, q = L.shape
+    eta = eta if eta is not None else ones(k)/k
     W = ones((k, q)) / q if (W is None) else W
-    primalPointStream = weightsForMultipleLosses2FISTAStream(L, alpha, W)
+    primalPointStream = weightsForMultipleLosses2FISTAStream(L, alpha, eta=eta, W=W)
     primalTime = .0
     dualTime = .0
 
     #print('Starting weight finding optimization for k=%d q=%d alpha=%f gap goal=%g' % (k,q,alpha,dualityGapGoal))
     maxIters = maxIters if not maxIters is None else 2000
-    primal = penalizedMultipleWeightedLoss2(L, W, alpha)
+    primal = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
     
     #dualPointStream = lowDimSolveStream(L, alpha, lambda2=l2, fixedLowerBound=-primal)
-    dualPointStream = dual1solve5Stream(L, alpha, lambda2=l2, fixedLowerBound=-primal)
+    dualPointStream = dual1solve5Stream(L, alpha, eta=eta, lambda2=l2, fixedLowerBound=-primal)
     l2init = zeros(q) if (l2 is None) else l2
     l2 = dualPointStream.next()
-    dual = dual1value(L, alpha, l2)
+    dual = dual1value(L, alpha, eta, l2)
     for i in xrange(maxIters):
         report(i, W, l2, None)
         #print('Primal - dual = gap; %g - %g = %g' % (primal,dual,primal - dual))
@@ -224,12 +225,12 @@ def weightsForMultipleLosses2TimedStreams(L, alpha, l2=None, W=None, maxPrimalIt
             if dualTime < primalTime:
                 #dualLam = lambda : dual1solve5(L, alpha,fixedLowerBound=-primal, lambda2=l2, maxIters=10)
                 dualTime, l2 = timedNext(dualTime, dualPointStream, -primal)
-                dual = dual1value(L, alpha, l2)
+                dual = dual1value(L, alpha, eta, l2)
                 report('dual ' + str(i), W, l2, None)
                 #print("Dual time: %f val: %f" % (dualTime, dual))
             else:
                 primalTime, W = timedNext(primalTime, primalPointStream)
-                primal = penalizedMultipleWeightedLoss2(L, W, alpha)
+                primal = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
                 #if dualTime < primalTime:
                 #print("Primal time: %f val: %f" % (primalTime, primal))
         else:
@@ -244,7 +245,7 @@ def primalDual(L, alpha, W=None, l2=None, dualityGapGoal=1e-7, maxIters=100, rep
     W = ones((k, q)) / q if (W is None) else W
     primal = penalizedMultipleWeightedLoss2(L, W, alpha)
     l2 = zeros(q) if (l2 is None) else l2
-    dual = dual1value(L, alpha, l2)
+    dual = dual1value(L, alpha, ones(k) / k, l2)
     print('Starting weight finding optimization for k=%d q=%d alpha=%f gap goal=%g' % (k, q, alpha, dualityGapGoal))
     for i in xrange(int(ceil(log(maxIters) + 1))):
         report(i, W, l2, None)
@@ -257,7 +258,7 @@ def primalDual(L, alpha, W=None, l2=None, dualityGapGoal=1e-7, maxIters=100, rep
             primal = penalizedMultipleWeightedLoss2(L, W, alpha)
             l2 = dual1solve5(L, alpha, lambda2=l2, fixedLowerBound=-primal, maxIters=int(5 * (1.5 ** i)),
                              report=lambda l2, ik: report(str(i) + 'D' + str(ik), None, l2, None))
-            dual = dual1value(L, alpha, l2)
+            dual = dual1value(L, alpha, ones(k) / k, l2)
         else:
             print('Achieved primal - dual = gap: %g - %g = %g' % (primal, dual, primal - dual))
             return W
@@ -468,7 +469,7 @@ def weightsForMultipleLosses2dual1(L, alpha, maxIters=200, report=None):
     l2 = dual1solve5(L, alpha, maxIters=maxIters, report=report)
 
     W = optimalWeightsMultipleModelsFixedProfile(L, vmin(alpha, l2))
-    dualV = dual1value(L, alpha, l2)
+    dualV = dual1value(L, alpha, ones(k) / k, l2)
     primV = penalizedMultipleWeightedLoss2(L, W, alpha)
     print('primal - dual = %f - %f = %f' % (primV, dualV, primV - dualV))
     return W
@@ -488,7 +489,7 @@ def dual1g(L, l2):
     return - array([(l + l2 / k).min() for l in L]).sum()
 
 #@profile
-def dual1value(L, alpha, lambda2, eta=None):
+def dual1value(L, alpha, eta, lambda2):
     u = ones_like(lambda2)
     u = u / u.sum()
 
