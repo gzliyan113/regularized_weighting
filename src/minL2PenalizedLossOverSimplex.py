@@ -4,7 +4,7 @@ Created on Thu Apr 19 09:56:38 2012
 
 @author: - Daniel Vainsencher
 """
-from numpy import ones, vstack, zeros, arange, allclose, sum, array, ones_like, nan_to_num, sort, log, ceil, mean, sqrt, diag, median, zeros_like, abs
+from numpy import ones, vstack, zeros, arange, allclose, sum, array, ones_like, nan_to_num, sort, log, ceil, mean, sqrt, diag, median, zeros_like, abs, tile
 from numpy.linalg import norm
 from numpy.random import randint,randn
 import scipy.sparse as sp
@@ -15,8 +15,6 @@ from minimize import proximalCuttingPlaneStream, fastGradientProjectionStream, r
 from itertools import repeat, count
 from utility import projectToSimplexNewton, nonNegativePart, ei, oneSidedBinarySearch, projectedSubgradient, subgradientPolyakCFM, nop, reportAndBoundStream, fastGradientProjectionMethod, slowGradientProjectionMethod, subset
 from cvxoptJointWeightsOptimization import optimalWeightsMultipleModelsFixedProfile, dual1prox2
-from minimize import projectedSubgradientStream
-#from memory_profiler import profile
 from scipy.sparse import csr_matrix
 
 from optimized_rw_core import lambdaAndWinners
@@ -39,12 +37,6 @@ def adjustedWeightsForWeightedLosses(L, W, eta, alpha, j):
     goal = (eta[j]**-1.)*(u-(W[abj,:].T*eta[abj]).T.sum(0))
     return weightsForLosses(L[j,:], alpha*eta[j],goal=goal)
 
-'''
-            allButCurrent = sum(W, 0) - W[j, :]
-            h = ones(q) * k / q - allButCurrent
-            newWeights = weightsForLosses(L[j, :], currAlpha / k, goal=h)
-            W[j, :] = newWeights
-'''
 
 def weightsForMultipleLosses2(L, alpha, maxIters=100, report=nop):
     return weightsForMultipleLosses2DualPrimal(L, alpha, report=report)
@@ -271,7 +263,7 @@ def primalDual(L, alpha, W=None, l2=None, dualityGapGoal=1e-7, maxIters=100, rep
             return W
 
 
-def weightsForMultipleLosses2BlockMinimization(L, alpha, W=None, maxIters=100, startAlpha=None, report=nop):
+def weightsForMultipleLosses2BlockMinimization(L, alpha, eta=None, W=None, maxIters=100, startAlpha=None, report=nop):
     ''' Solve a jointly convex problem of finding optimal weight vectors
     for multiple models with joint penalization by minimizing w.r.t. each
     weight vector iteratively (solving for a single weight vector is very
@@ -279,6 +271,8 @@ def weightsForMultipleLosses2BlockMinimization(L, alpha, W=None, maxIters=100, s
     alpha = float(alpha)
     startAlpha = alpha if startAlpha is None else float(startAlpha)
     k, q = L.shape
+    eta = ones(k)/k if eta is None else eta
+
     if W is not None:
         W = W.copy()
     else:
@@ -287,19 +281,14 @@ def weightsForMultipleLosses2BlockMinimization(L, alpha, W=None, maxIters=100, s
 
     oldW = ones((k, q))  # never close
     print('Starting joint weights problem at loss %f'
-          % penalizedMultipleWeightedLoss2(L, W, alpha))
+          % penalizedMultipleWeightedLoss2(L, W, alpha, eta))
     for i in arange(maxIters):
         theta = i / float(maxIters)
         currAlpha = (1 - theta) * startAlpha + theta * alpha
         report(W.copy(), i)
         oldW = W.copy()
         for j in arange(k):
-            allButCurrent = sum(W, 0) - W[j, :]
-            h = ones(q) * k / q - allButCurrent
-            newWeights = weightsForLosses(L[j, :], currAlpha / k, goal=h)
-            W[j, :] = newWeights
-            #print('Iteration %f ends at loss %f'
-        #    % (i, penalizedMultipleWeightedLoss2(L, W, alpha)))
+            W[j, :] = adjustedWeightsForWeightedLosses(L, W, eta, alpha, j)
         if allclose(W, oldW, rtol=10 ** -7, atol=((1 / q) * 10 ** -7)):
             print('Change small at iteration %d, stopping early.' % i)
             break
@@ -350,38 +339,42 @@ def weightsForMultipleLosses2RandomBlockMinimization(L, alpha, W=None, maxIters=
     return W
 
 
-def weightsForMultipleLosses2GradientProjection(L, alpha, W=None, maxIters=200):
+def weightsForMultipleLosses2GradientProjection(L, alpha, eta=None, W=None, maxIters=200):
     k, q = L.shape
+    eta = eta if eta is not None else ones(k)/k
+
     tk = alpha ** -1
     if W is None:
         W = ones((k, q)) / q
     for _ in range(maxIters):
-        gk = penalizedMultipleWeightedLoss2Gradient(L, W, alpha)
+        gk = penalizedMultipleWeightedLoss2Gradient(L, W, alpha, eta=eta)
         Wr = W - tk * gk.reshape(k, q)
         W = array([projectToSimplexNewton(w) for w in Wr])
-        print(penalizedMultipleWeightedLoss2(L, W, alpha))
+        #print(penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta))
     return W
 
 
-def weightsForMultipleLosses2FISTA(L, alpha, W=None, maxIters=200, report=nop, row_sums=None):
+def weightsForMultipleLosses2FISTA(L, alpha, W=None, eta=None, maxIters=200, report=nop, row_sums=None):
     k, q = L.shape
+    eta = eta if eta is not None else ones(k)/k
     if W is None:
         W = ones((k, q)) / q
 
-    weightStream = weightsForMultipleLosses2FISTAStream(L, alpha, W, row_sums=row_sums)
+    weightStream = weightsForMultipleLosses2FISTAStream(L, alpha, W, eta=eta, row_sums=row_sums)
 
     return reportAndBoundStream(weightStream, maxIters=maxIters, report=report)
 
 
-def weightsForMultipleLosses2FISTAStream(L, alpha, W, row_sums=None):
+def weightsForMultipleLosses2FISTAStream(L, alpha, W, eta=None, row_sums=None):
     k, q = L.shape
+    eta = eta if eta is not None else ones(k)/k
     row_sums = row_sums if not row_sums is None else ones(k)
     if W is None:
         W = ones((k, q)) / q
 
-    f = lambda Wl: penalizedMultipleWeightedLoss2(L, Wl.reshape((k, q)), alpha)
+    f = lambda Wl: penalizedMultipleWeightedLoss2(L, Wl.reshape((k, q)), alpha, eta=eta)
     g = lambda Wl: 0 # Will be applied only to valid weights...
-    grad_f = lambda Wl: penalizedMultipleWeightedLoss2Gradient(L, Wl, alpha)
+    grad_f = lambda Wl: penalizedMultipleWeightedLoss2Gradient(L, Wl, alpha, eta=eta)
     prox_g = lambda lip, old_W: array([
         projectToSimplexNewton(w, target=row_sum)
         for (row_sum, w)
@@ -394,17 +387,20 @@ def weightsForMultipleLosses2FISTAStream(L, alpha, W, row_sums=None):
 globalA = None
 
 
-def penalizedMultipleWeightedLoss2Gradient(L, W, alpha):
+def penalizedMultipleWeightedLoss2Gradient(L, W, alpha, eta=None):
     global globalA
     k, q = L.shape
+    eta = eta if eta is not None else ones(k)/k
     u = ones(q) / q
     # Create or update expensive sparse matrix
     if (globalA is None) or (globalA.shape != (q, k * q)):
         I = sp.spdiags(ones(q), 0, q, q)
-        globalA = sp.hstack([I for _ in range(k)]) / k
+        globalA = sp.hstack([I for _ in range(k)])
 
-    A = globalA
-    return (A.T.dot(2 * alpha * (A.dot(W.flatten()) - u))).reshape(k, q) + (L / k)
+    d = sp.lil_matrix((q*k, q*k))
+    d.setdiag(tile(eta, (q, 1)).T.flatten())
+    A = globalA * d
+    return (A.T.dot(2 * alpha * (A.dot(W.flatten()) - u))).reshape(k, q) + (L.T * eta).T
 
 
 def penalizedWeightedLoss(loss, weights, alpha):
@@ -426,13 +422,15 @@ def validateWeights(W):
         raise Exception('Invalid weight vector!')
 
 
-def penalizedMultipleWeightedLoss2(L, W, alpha):
+def penalizedMultipleWeightedLoss2(L, W, alpha, eta=None):
     k, q = L.shape
+    eta = eta if eta is not None else ones(k) / k
+
     u = ones(q) / q
     if alpha <= 0:
         raise Exception('Alpha must be positive.')
-    dev = W.mean(0) - u
-    return sum(L * W) / k + alpha * dev.dot(dev)
+    dev = eta.dot(W) - u
+    return sum(eta.dot(L * W)) + alpha * dev.dot(dev)
 
 
 def dual1solve(L, alpha, lambda2=None, maxIters=200, rep=None, slow=False, proxVersion=None):
@@ -996,8 +994,10 @@ def lowDimCoordinateMinimizationStream(L, alpha, ts0=None):
 
     while True:
         for j in range(k):
+            tst = ts.copy()
+
             def f(tj):
-                tst = ts.copy(); tst[j]=tj
+                tst[j] = tj
                 return -gOfTs(L, alpha, tst)
             ts[j] = fminbound(f,-b,b,xtol=1e-10)
             ts = ts - ts.mean()

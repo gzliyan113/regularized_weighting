@@ -29,8 +29,7 @@ def lambdaAndWinners2(L, ts):
 
 cimport cython
 @cython.boundscheck(False)
-def lambdaAndWinners(L, 
-                      np.ndarray[DTYPE_t, ndim=1] ts):
+def lambdaAndWinners(L, np.ndarray[DTYPE_t, ndim=1] ts):
     cdef np.ndarray[DTYPE_t, ndim=2] Lb = L
     cdef int n
     cdef int k

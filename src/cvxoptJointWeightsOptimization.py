@@ -1,7 +1,7 @@
 from cvxopt.coneprog import coneqp
 from cvxopt.solvers import lp
 from cvxopt import matrix, sparse, spmatrix, spdiag
-from numpy import eye, hstack, zeros, ones, array, vstack, arange
+from numpy import eye, hstack, zeros, ones, array, vstack, arange, tile
 
 
 def rowJofK(k, q, j):
@@ -14,29 +14,31 @@ def sparseRowJofK(k, q, j):
     return spmatrix(ones(q), q * [j], range(q), (k, q))
 
 
-def optimalWeightsMultipleModels2raw(losses, alpha, initWeights=None, hintDict=None):
-    k, q = losses.shape
+def optimalWeightsMultipleModels2raw(losses, alpha, eta=None, initWeights=None, hintDict=None):
+    k, n = losses.shape
+    eta = eta if eta is not None else ones(k)/k
+    alpha = float(alpha)
     if initWeights is not None:
         initvals = {'x': matrix(initWeights.flatten()), 's': matrix(initWeights.flatten())}
     elif hintDict:
         initvals = hintDict
     else:
         initvals = None
-    I = spdiag(list(ones(q)))
-    B = sparse([I for _ in range(k)]).T
-    P = 2 * float(alpha) / k / k * (B.T * B)
-    t = (losses.flatten() / k) - (alpha * ones(q * k) / (k * q))
-    A = sparse([[sparseRowJofK(k, q, j)] for j in range(k)])
+    I = spdiag(list(ones(n)))
+    B = sparse([I*eta[j] for j in range(k)]).T
+    P = 2 * alpha * (B.T * B)
+    q = losses.flatten() * tile(eta, (n, 1)).T.flatten() - (alpha * ones(n * k) / (k * n))
+    A = sparse([[sparseRowJofK(k, n, j)] for j in range(k)])
     b = ones(k)
-    G = -spdiag(list(ones(k * q)))
-    h = zeros(k * q)
-    return coneqp(P, matrix(t), G=G, h=matrix(h), A=A, b=matrix(b), initvals=initvals)
+    G = -spdiag(list(ones(k * n)))
+    h = zeros(k * n)
+    return coneqp(P, matrix(q), G=G, h=matrix(h), A=A, b=matrix(b), initvals=initvals)
 
 
-def optimalWeightsMultipleModels2(losses, alpha, initWeights=None, hintDict=None):
+def optimalWeightsMultipleModels2(losses, alpha, eta=None, initWeights=None, hintDict=None):
     k, q = losses.shape
-    resDict = optimalWeightsMultipleModels2raw(losses, alpha, initWeights=None, hintDict=None)
-    return array(resDict['x']).reshape((k, q))
+    res_dict = optimalWeightsMultipleModels2raw(losses, alpha, eta=eta, initWeights=initWeights, hintDict=hintDict)
+    return array(res_dict['x']).reshape((k, q))
 
 
 def optimalWeightsMultipleModelsFixedProfile(losses, averageWeights, rowSums=None, initWeights=None):
