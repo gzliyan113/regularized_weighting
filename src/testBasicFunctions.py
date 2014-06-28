@@ -1,6 +1,6 @@
 from numpy.random import randn
 from numpy import diff, allclose
-
+from testUtilities import random_eta
 from minL2PenalizedLossOverSimplex import weightsForMultipleLosses2BlockMinimization, penalizedMultipleWeightedLoss2, penalizedMultipleWeightedLoss2Gradient, gOfTs, gOfTGrad
 from utility import functionGradient
 
@@ -23,9 +23,10 @@ def testLossGradientAndBlockwise():
 
 
 def testLossGradient():
-    W = weightsForMultipleLosses2BlockMinimization(L, alpha, maxIters=1)
-    Wg = penalizedMultipleWeightedLoss2Gradient(L, W, alpha)
-    lossAtWeight = lambda ws: penalizedMultipleWeightedLoss2(L, ws.reshape((k, n)), alpha)
+    eta = random_eta(k)
+    W = weightsForMultipleLosses2BlockMinimization(L, alpha, eta=eta, maxIters=1)
+    Wg = penalizedMultipleWeightedLoss2Gradient(L, W, alpha, eta=eta)
+    lossAtWeight = lambda ws: penalizedMultipleWeightedLoss2(L, ws.reshape((k, n)), alpha, eta=eta)
     WgAppx = functionGradient(lossAtWeight, W.reshape((n * k)), 10e-9).reshape((k, n))
 
     # Our gradient calculation should be close to a numerical approximation
@@ -34,9 +35,12 @@ def testLossGradient():
 
 def testHGradient():
     # at a general position, any subgradient is the gradient
+    eta = random_eta(k)
     ts = randn(k)
-    dualValue = lambda t: gOfTs(L, alpha, t)
-    dg = gOfTGrad(L, alpha, ts)
+
+    def dualValue(t):
+        return gOfTs(L, alpha, t, eta=eta)
+    dg = gOfTGrad(L, alpha, ts, eta=eta)
     dgAppx = functionGradient(dualValue, ts, 10e-9)
 
     # could still fail at points of non-differentiability

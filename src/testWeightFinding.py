@@ -2,6 +2,7 @@ from numpy import array, allclose, ones
 from numpy.random import rand
 from minL2PenalizedLossOverSimplex import weightsForMultipleLosses2BlockMinimization, penalizedMultipleWeightedLoss2, weightsForMultipleLosses2GradientProjection, dual1solve5, dual1value, lambda2W, ts2WMixedColumns, tsFromLambda, validateWeights, weightsForMultipleLosses2FISTA
 from cvxoptJointWeightsOptimization import optimalWeightsMultipleModels2
+from src.testUtilities import random_eta
 
 
 def testBlockwiseOptimizationVSCvxAverageFormulationVSGradientProjection():
@@ -28,14 +29,20 @@ def testDualThenLinearBounds():
     k, n = (4, 60)
     L = rand(k, n)
     alpha = 100.
-    eta = (rand(k) + ones(k)/k) / 2
-    l2 = dual1solve5(L, alpha, eta=eta, maxIters=100)
-    dualLowerBound = dual1value(L, alpha, l2, eta)
+    eta = random_eta(k)
+    l2 = dual1solve5(L, alpha, eta=eta, maxIters=1000)
+    dualLowerBound = dual1value(L, alpha, l2, eta=eta)
+    WOTS = optimalWeightsMultipleModels2(L, alpha, eta=eta)
+    primalUpperBoundPrecise = penalizedMultipleWeightedLoss2(L, WOTS, alpha, eta=eta)
+    print dualLowerBound, primalUpperBoundPrecise
+
+    assert allclose(dualLowerBound, primalUpperBoundPrecise, atol=10e-5)
+
     W0 = lambda2W(L, l2, alpha)
     ts = tsFromLambda(L, l2)
     W1 = ts2WMixedColumns(L, ts, alpha)
-    primalUpperBoundFull = penalizedMultipleWeightedLoss2(L, W0, alpha)
-    primalUpperBoundQuick = penalizedMultipleWeightedLoss2(L, W1, alpha)
+    primalUpperBoundFull = penalizedMultipleWeightedLoss2(L, W0, alpha, eta=eta)
+    primalUpperBoundQuick = penalizedMultipleWeightedLoss2(L, W1, alpha, eta=eta)
     print "duality gap from full : %f" % (primalUpperBoundFull - dualLowerBound)
     print "duality gap from quick: %f" % (primalUpperBoundQuick - dualLowerBound)
     assert allclose(dualLowerBound, primalUpperBoundFull, atol=10e-5)

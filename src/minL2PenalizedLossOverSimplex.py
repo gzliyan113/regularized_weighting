@@ -488,12 +488,12 @@ def dual1g(L, l2):
     return - array([(l + l2 / k).min() for l in L]).sum()
 
 #@profile
-def dual1value(L, alpha, lambda2):
+def dual1value(L, alpha, lambda2, eta=None):
     u = ones_like(lambda2)
     u = u / u.sum()
 
     vmin, wmins = dual1vw(L, alpha, lambda2)
-    return alpha * (norm(u - vmin) ** 2) - lambda2.dot(vmin) + wmins.mean()
+    return alpha * (norm(u - vmin) ** 2) - lambda2.dot(vmin) + eta.dot(wmins)
 
 
 def dual1Q(Lip, L, newLambda, oldLambda):
@@ -612,16 +612,16 @@ def tsFromLambda(L, l2):
     return (l2 + L).min(1)
 
 
-def gOfTs(L, alpha, ts):
+def gOfTs(L, alpha, ts, eta=None):
     k, q = L.shape
     u = ones(q) / q
     lambda2 = lambda2FromTs(L, ts)
     v = vmin(alpha, lambda2)
-    return alpha * (norm(u - v) ** 2) - lambda2.dot(v) + mean(ts)
+    return alpha * (norm(u - v) ** 2) - lambda2.dot(v) + eta.dot(ts)
 
 
 #@profile
-def gOfTGrad(L, alpha, ts):
+def gOfTGrad(L, alpha, ts, eta=None):
     k, q = L.shape
     u = ones(q) / q
 
@@ -630,7 +630,7 @@ def gOfTGrad(L, alpha, ts):
     v = vmin(alpha, lambda2)
     ij = vstack((idxes,arange(q)))
     locs = csr_matrix((ones(q),ij),shape=(k,q))
-    basicGradient = -locs.dot(v)
+    basicGradient = -locs.dot(v) + eta
     return basicGradient - basicGradient.mean()
 
 
@@ -924,21 +924,23 @@ def dual1solve4(L, alpha, fixedLowerBound=None, lambda2=None, maxIters=200, thet
                                                  maxIters=maxIters, report=report))
 
 
-def dual1solve5(L, alpha, fixedLowerBound=None, lambda2=None, maxIters=30, report=None):
-    tStream = dual1solve5Stream(L, alpha, fixedLowerBound=fixedLowerBound, lambda2=lambda2)
+def dual1solve5(L, alpha, eta=None, fixedLowerBound=None, lambda2=None, maxIters=30, report=None):
+    k, _ = L.shape
+    eta = eta if eta is not None else ones(k)/k
+    tStream = dual1solve5Stream(L, alpha, eta=eta, fixedLowerBound=fixedLowerBound, lambda2=lambda2)
 
     return reportAndBoundStream(tStream,
                                 maxIters=maxIters,
                                 report=report)
 
 
-def dual1solve5Stream(L, alpha, fixedLowerBound=None, lambda2=None):
+def dual1solve5Stream(L, alpha, eta=None, fixedLowerBound=None, lambda2=None):
     k, q = L.shape
     lambda2 = zeros(q) if lambda2 is None else lambda2
 
     nextLowerBound = fixedLowerBound
-    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t),
-                                         lambda t: -gOfTGrad(L, alpha, t),
+    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t, eta=eta),
+                                         lambda t: -gOfTGrad(L, alpha, t, eta=eta),
                                          tsFromLambda(L, lambda2),
                                          lowerBound=nextLowerBound,
                                          stepSize=200.)
