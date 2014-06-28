@@ -41,24 +41,23 @@ def optimalWeightsMultipleModels2(losses, alpha, eta=None, initWeights=None, hin
     return array(res_dict['x']).reshape((k, q))
 
 
-def optimalWeightsMultipleModelsFixedProfile(losses, averageWeights, rowSums=None, initWeights=None):
+def optimalWeightsMultipleModelsFixedProfile(losses, averageWeights, eta, rowSums=None, initWeights=None):
     "Min. W'L s.t. each row w_j of W is a distribution with sum rowSums[j], and the mean of all rows is averageWeights."
-    k, q = losses.shape
+    k, n = losses.shape
     rowSums = ones(k) if rowSums is None else rowSums
     if initWeights is not None:
         initvals = {'x': matrix(initWeights.flatten()), 's': matrix(initWeights.flatten())}
     else:
         initvals = None
-    t = losses.flatten()
-    Aparts = [[sparseRowJofK(k, q, j), spdiag(list(ones(q) / k))] for j in range(k)]
+    q = losses.flatten() * tile(eta, (n, 1)).T.flatten()
+    Aparts = [[sparseRowJofK(k, n, j), spdiag(list(ones(n) * eta[j]))] for j in range(k)]
     A = sparse(Aparts)
     b = hstack((rowSums, averageWeights))
-    G = spdiag(list(-ones(k * q)))
-    h = zeros(k * q)
-    "Min. t'x s.t. Gx <= h and Ax=b"
-    resDict = lp(matrix(t), G=G, h=matrix(h), A=A, b=matrix(b), solver='glpk')
-    #resDict = lp(matrix(t), G = G, h = matrix(h), A = A, b = matrix(b))
-    return array(resDict['x']).reshape((k, q))
+    G = spdiag(list(-ones(k * n)))
+    h = zeros(k * n)
+    "Min. q'x s.t. Gx <= h and Ax=b"
+    resDict = lp(matrix(q), G=G, h=matrix(h), A=A, b=matrix(b), solver='glpk')
+    return array(resDict['x']).reshape((k, n))
 
 
 def optimalWeightsMultipleModelsFixedProfileNonSparse(losses, averageWeights, initWeights=None):

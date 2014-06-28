@@ -671,8 +671,8 @@ def dual1solve3(L, alpha, lambda2=None, maxIters=200, theta=1, report=None):
                                                  theta=theta, maxIters=maxIters, report=report))
 
 
-def lambda2W(L, l2, alpha):
-    return optimalWeightsMultipleModelsFixedProfile(L, vmin(alpha, l2))
+def lambda2W(L, l2, alpha, eta):
+    return optimalWeightsMultipleModelsFixedProfile(L, vmin(alpha, l2), eta)
 
 '''
 def lambdaAndWinners(L, ts):
@@ -684,25 +684,27 @@ def lambdaAndWinners(L, ts):
     return idxes, maxes
 '''
 
-def ts2W(L, ts, alpha):
+
+def ts2W(L, ts, alpha, eta):
     """ Create a weight matrix from losses and adjustment factors.
 
-    In contrast to other methods, we use ts-L to partition the data points, then directly create valid weight distributions."""
+    In contrast to other methods, we use ts-L to partition the data points,
+    then directly create valid weight distributions."""
 
     k, n = L.shape
 
     # Find the best model to explain each point, and base weights there
     lambda2, idxes = lambdaAndWinners(L, ts)
-    kMaxes = lambda2 * (k / 2. / alpha)
+    kMaxes = lambda2 / 2. / alpha
 
     # Compute weights.
-    W = zeros((k,n))
+    W = zeros((k, n))
     for j in range(k):
         if sum(idxes == j) > 0:
-            partial_wj = projectToSimplexNewton(kMaxes[idxes == j])
-            W[j,idxes==j] = partial_wj
+            partial_wj = projectToSimplexNewton(kMaxes[idxes == j] / eta[j])
+            W[j, idxes == j] = partial_wj
         else:
-            W[j,:] = ones(n)/n
+            W[j, :] = ones(n)/n
     return W
 
 

@@ -1,8 +1,8 @@
 from numpy import array, allclose, ones
 from numpy.random import rand
-from minL2PenalizedLossOverSimplex import weightsForMultipleLosses2BlockMinimization, penalizedMultipleWeightedLoss2, weightsForMultipleLosses2GradientProjection, dual1solve5, dual1value, lambda2W, ts2WMixedColumns, tsFromLambda, validateWeights, weightsForMultipleLosses2FISTA
+from minL2PenalizedLossOverSimplex import weightsForMultipleLosses2BlockMinimization, penalizedMultipleWeightedLoss2, weightsForMultipleLosses2GradientProjection, dual1solve5, dual1value, lambda2W, ts2WMixedColumns, tsFromLambda, validateWeights, weightsForMultipleLosses2FISTA, ts2W
 from cvxoptJointWeightsOptimization import optimalWeightsMultipleModels2
-from src.testUtilities import random_eta
+from testUtilities import random_eta
 
 
 def testBlockwiseOptimizationVSCvxAverageFormulationVSGradientProjection():
@@ -26,9 +26,9 @@ def testBlockwiseOptimizationVSCvxAverageFormulationVSGradientProjection():
 
 def testDualThenLinearBounds():
     "Solve dual then convert to primal. The interval between dual and primal values should be close to the value of an OTS solution."
-    k, n = (4, 60)
+    k, n = (4, 200)
     L = rand(k, n)
-    alpha = 100.
+    alpha = 3 * n
     eta = random_eta(k)
     l2 = dual1solve5(L, alpha, eta=eta, maxIters=1000)
     dualLowerBound = dual1value(L, alpha, l2, eta=eta)
@@ -38,13 +38,13 @@ def testDualThenLinearBounds():
 
     assert allclose(dualLowerBound, primalUpperBoundPrecise, atol=10e-5)
 
-    W0 = lambda2W(L, l2, alpha)
+    WPrecConv = lambda2W(L, l2, alpha, eta)
     ts = tsFromLambda(L, l2)
-    W1 = ts2WMixedColumns(L, ts, alpha)
-    primalUpperBoundFull = penalizedMultipleWeightedLoss2(L, W0, alpha, eta=eta)
-    primalUpperBoundQuick = penalizedMultipleWeightedLoss2(L, W1, alpha, eta=eta)
+    WPartitionConv = ts2W(L, ts, alpha, eta)
+    primalUpperBoundFull = penalizedMultipleWeightedLoss2(L, WPrecConv, alpha, eta=eta)
+    primalUpperBoundQuick = penalizedMultipleWeightedLoss2(L, WPartitionConv, alpha, eta=eta)
     print "duality gap from full : %f" % (primalUpperBoundFull - dualLowerBound)
     print "duality gap from quick: %f" % (primalUpperBoundQuick - dualLowerBound)
     assert allclose(dualLowerBound, primalUpperBoundFull, atol=10e-5)
-    assert allclose(dualLowerBound, primalUpperBoundQuick, atol=10e-5)
-    assert allclose(W0, W1, atol=10e-3)
+    assert allclose(dualLowerBound, primalUpperBoundQuick, atol=10e-3)
+    assert allclose(WPrecConv, WPartitionConv, atol=10e-2)
