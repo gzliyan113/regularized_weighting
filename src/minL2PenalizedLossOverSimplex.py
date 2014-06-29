@@ -4,7 +4,9 @@ Created on Thu Apr 19 09:56:38 2012
 
 @author: - Daniel Vainsencher
 """
-from numpy import ones, vstack, zeros, arange, allclose, sum, array, ones_like, nan_to_num, sort, log, ceil, mean, sqrt, diag, median, zeros_like, abs, tile
+from numpy import (ones, vstack, zeros, arange, allclose, sum, array,
+                   ones_like, nan_to_num, sort, log, ceil, mean, sqrt,
+                   diag, median, zeros_like, abs, tile, cumsum)
 from numpy.linalg import norm
 from numpy.random import randint,randn
 import scipy.sparse as sp
@@ -457,6 +459,7 @@ def dual1solve(L, alpha, lambda2=None, maxIters=200, rep=None, slow=False, proxV
 
 
 def weightsForMultipleLosses2dual1(L, alpha, maxIters=200, report=None):
+    k, _ = L.shape
     l2 = dual1solve5(L, alpha, maxIters=maxIters, report=report)
 
     W = optimalWeightsMultipleModelsFixedProfile(L, vmin(alpha, l2))
@@ -604,6 +607,7 @@ def tsFromLambda(L, l2):
     return (l2 + L).min(1)
 
 
+#@profile
 def gOfTs(L, alpha, ts, eta=None):
     k, q = L.shape
     u = ones(q) / q
@@ -620,9 +624,8 @@ def gOfTGrad(L, alpha, ts, eta=None):
     lambda2, idxes = lambdaAndWinners(L, ts)
 
     v = vmin(alpha, lambda2)
-    ij = vstack((idxes,arange(q)))
-    locs = csr_matrix((ones(q),ij),shape=(k,q))
-    basicGradient = -locs.dot(v) + eta
+    dataPart = - array([v[idxes == j].sum() for j in range(k)])
+    basicGradient = dataPart + eta
     return basicGradient - basicGradient.mean()
 
 
@@ -700,12 +703,14 @@ def ts2W(L, ts, alpha, eta):
     return W
 
 
-def ts2WMixedColumns(L, ts, alpha):
+def ts2WMixedColumns(L, ts, alpha, eta):
     """Create a weight matrix from losses and given adjustment factors.
 
     An important subtlety is that only for the optimal ts do we know that
     the resulting weight rows sum to 1."""
     k, n = L.shape
+    etai = eta ** -1
+
     lambda2 = lambda2FromTs(L, ts)
 
     # Compute the adjusted fit
@@ -727,7 +732,7 @@ def ts2WMixedColumns(L, ts, alpha):
     nonAmbPos = (1 - ambiguous).nonzero()[0]
 
     # Set W for the non-ambiguous set of points
-    W[idxes[nonAmbPos], nonAmbPos] = k * v[nonAmbPos]
+    W[idxes[nonAmbPos], nonAmbPos] = etai[nonAmbPos ] * v[nonAmbPos]
     if ambiguous.any():
         # Below red stands for "reduced", corresponding to the ambiguous columns/points.
         redL = L[:, ambPos]
@@ -928,6 +933,7 @@ def dual1solve5(L, alpha, eta=None, fixedLowerBound=None, lambda2=None, maxIters
                                 report=report)
 
 
+#@profile
 def dual1solve5Stream(L, alpha, eta=None, fixedLowerBound=None, lambda2=None):
     k, q = L.shape
     lambda2 = zeros(q) if lambda2 is None else lambda2
@@ -965,13 +971,13 @@ def lowDimSGDStream(L, alpha, subsamplingFactor, radius, ts0=None):
 #projectedSubgradientStream(sGOfTGrad, emptyProj, ts0, theta=sqrt(k)*(L.max()-L.min()))
 
 
-def lowDimSolveStream(L, alpha, fixedLowerBound=None, ts0=None):
+def lowDimSolveStream(L, alpha, eta, fixedLowerBound=None, ts0=None):
     k, q = L.shape
     ts0 = randn(k) if ts0 is None else ts0
     ts0 = ts0 - ts0.mean()
     nextLowerBound = fixedLowerBound
-    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t),
-                                         lambda t: -gOfTGrad(L, alpha, t),
+    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t, eta=eta),
+                                         lambda t: -gOfTGrad(L, alpha, t, eta=eta),
                                          ts0,
                                          lowerBound=nextLowerBound,
                                          stepSize=1000.)
@@ -1075,7 +1081,27 @@ def sumWeightLoss(alpha, L, ts, j):
     return (sumWeightsFor(alpha, L,ts)[j] - 1) ** 2
 
 
-def aForTs(alpha, L,ts):
+def aForTs(alpha, L, ts):
     lambda2 = lambda2FromTs(L, ts)
     v = vmin(alpha, lambda2)
     return median(v-lambda2/(2*alpha))
+
+
+def dualPrimalCoordinateWise(L, alpha, eta):
+    k, n = L.shape
+    ts = zeros(k)
+    yield ts
+    while True:
+        v = vmin(alpha, lambda2FromTs(L, ts))
+        j = randint(1, k)
+        js = [j_ for j_ in range(k) if j_ is not j]
+        d = lambda2FromTs(L[js, :], ts[js]) + L[j, :]
+        srt = d.argsort()
+        d = d[srt]
+        v_sum = cumsum(v[srt])
+        first = (v_sum >= eta[j]).nonzero()[0][0]
+        ts[j] = d[first]
+        ts = ts - ts.mean()
+        yield ts
+
+
