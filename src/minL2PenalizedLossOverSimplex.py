@@ -384,24 +384,15 @@ def weightsForMultipleLosses2FISTAStream(L, alpha, W, eta=None, row_sums=None):
     return fastGradientProjectionStream(f, g, grad_f, prox_g, W)
 
 
-# cache for expensive value.
-globalA = None
-
-
 def penalizedMultipleWeightedLoss2Gradient(L, W, alpha, eta=None):
-    global globalA
     k, q = L.shape
     eta = eta if eta is not None else ones(k)/k
     u = ones(q) / q
-    # Create or update expensive sparse matrix
-    if (globalA is None) or (globalA.shape != (q, k * q)):
-        I = sp.spdiags(ones(q), 0, q, q)
-        globalA = sp.hstack([I for _ in range(k)])
 
-    d = sp.lil_matrix((q*k, q*k))
-    d.setdiag(tile(eta, (q, 1)).T.flatten())
-    A = globalA * d
-    return (A.T.dot(2 * alpha * (A.dot(W.flatten()) - u))).reshape(k, q) + (L.T * eta).T
+    lossesPart = (L.T * eta).T
+    vMinusUniform = eta.dot(W) - u
+    regPart = (2 * alpha * eta.reshape((k,1))) * vMinusUniform.reshape((1,q))
+    return regPart + lossesPart
 
 
 def penalizedWeightedLoss(loss, weights, alpha):
@@ -474,21 +465,21 @@ def weightsForMultipleLosses2dual1(L, alpha, maxIters=200, report=None):
     print('primal - dual = %f - %f = %f' % (primV, dualV, primV - dualV))
     return W
 
-#@profile
+
 def dual1vw(L, alpha, lambda2):
     k, q = L.shape
-    "Solve quadratic over simplex part."
-    vmin = projectToSimplexNewton(lambda2 / 2 / alpha)
+    #Solve quadratic over simplex part.
+    min_v = projectToSimplexNewton(lambda2 / 2 / alpha)
     wmins = array([(l + lambda2).min() for l in L])
     #wmins = (L+lambda2).min(1) # slower
-    return vmin, wmins
+    return min_v, wmins
 
 
 def dual1g(L, l2):
     k, q = L.shape
     return - array([(l + l2 / k).min() for l in L]).sum()
 
-#@profile
+
 def dual1value(L, alpha, eta, lambda2):
     u = ones_like(lambda2)
     u = u / u.sum()
@@ -994,7 +985,7 @@ def lowDimCoordinateMinimizationStream(L, alpha, ts0=None):
     k, _ = L.shape
     ts0 = randn(k) if ts0 is None else ts0
     ts0 = ts0 - ts0.mean()
-    #ts = zeros(k) if ts is None else ts
+
     b = L.max()
 
     while True:
@@ -1004,7 +995,7 @@ def lowDimCoordinateMinimizationStream(L, alpha, ts0=None):
             def f(tj):
                 tst[j] = tj
                 return -gOfTs(L, alpha, tst)
-            ts[j] = fminbound(f,-b,b,xtol=1e-10)
+            ts[j] = fminbound(f, -b, b, xtol=1e-10)
             ts = ts - ts.mean()
             b = 2*abs(ts).max()
             yield ts
