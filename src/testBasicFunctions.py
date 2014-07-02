@@ -39,8 +39,8 @@ def testHGradient():
     ts = randn(k)
 
     def dualValue(t):
-        return gOfTs(L, alpha, t, eta=eta)
-    dg = gOfTGrad(L, alpha, ts, eta=eta)
+        return gOfTs(L, alpha, t, eta)
+    dg = gOfTGrad(L, alpha, ts, eta)
     dgAppx = functionGradient(dualValue, ts, 10e-9)
 
     # could still fail at points of non-differentiability

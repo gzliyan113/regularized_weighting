@@ -59,50 +59,50 @@ def weightsDualPrimal(L, alpha, tsStreamMaker, toPrimal, ts0=None, maxIters=1000
     return W
 
 
-def weightsForMultipleLosses2DualPrimal(L, alpha, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+def weightsForMultipleLosses2DualPrimal(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
-    lowDimDualStr = lowDimSolveStream(L, alpha, ts0=ts0)
+    lowDimDualStr = lowDimSolveStream(L, alpha, eta, ts0=ts0)
     ts = lowDimDualStr.next()
     for i in xrange(maxIters):
-        W = ts2WMixedColumns(L, ts, alpha)
+        W = ts2WMixedColumns(L, ts, alpha, eta)
         primalValue = penalizedMultipleWeightedLoss2(L, W, alpha)
         report('p1' + str(i), W, None, None)
         ts = lowDimDualStr.send(-primalValue)
-        dualValue = gOfTs(L, alpha, ts)
+        dualValue = gOfTs(L, alpha, eta, ts)
         report('dc' + str(i), None, None, ts)
         if primalValue - dualValue < dualityGapGoal:
             break
     return W
 
 
-def weightsForMultipleLosses2DualPrimal2(L, alpha, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+def weightsForMultipleLosses2DualPrimal2(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
-    lowDimDualStr = lowDimSolveStream(L, alpha, ts0=ts0)
+    lowDimDualStr = lowDimSolveStream(L, alpha, eta, ts0=ts0)
     ts = lowDimDualStr.next()
     report('dc2', None, None, ts)
     for i in xrange(maxIters):
-        W = ts2W(L, ts, alpha)
-        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha)
+        W = ts2W(L, ts, alpha, eta)
+        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
         report('p1' + str(i), W, None, None)
         for h in range(3):
             ts = lowDimDualStr.send(-primalValue)
             report('dc2i' + str(i)  + 'h' + str(h), None, None, ts)
-        dualValue = gOfTs(L, alpha, ts)
+        dualValue = gOfTs(L, alpha, ts, eta)
         report('dc2i' + str(i), None, None, ts)
         if primalValue - dualValue < dualityGapGoal:
             break
     return W
 
-def weightsForMultipleLosses2DualPrimal3(L, alpha, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+def weightsForMultipleLosses2DualPrimal3(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
-    lowDimDualStr = lowDimSolveStream(L, alpha, ts0=ts0)
+    lowDimDualStr = dualPrimalCoordinateWise(L, alpha, eta, ts0=ts0)
     ts = lowDimDualStr.next()
     for i in xrange(maxIters):
-        W = ts2WMixedColumnsFista(L, ts, alpha)
-        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha)
+        W = ts2W(L, ts, alpha, eta)
+        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
         report('p1' + str(i), W, None, None)
         ts = lowDimDualStr.send(-primalValue)
-        dualValue = gOfTs(L, alpha, ts)
+        dualValue = gOfTs(L, alpha, eta, ts)
         report('dc' + str(i), None, None, ts)
         if primalValue - dualValue < dualityGapGoal:
             break
@@ -607,7 +607,7 @@ def tsFromLambda(L, l2):
 
 
 #@profile
-def gOfTs(L, alpha, ts, eta=None):
+def gOfTs(L, alpha, ts, eta):
     k, q = L.shape
     u = ones(q) / q
     lambda2 = lambda2FromTs(L, ts)
@@ -616,7 +616,7 @@ def gOfTs(L, alpha, ts, eta=None):
 
 
 #@profile
-def gOfTGrad(L, alpha, ts, eta=None):
+def gOfTGrad(L, alpha, ts, eta):
     k, q = L.shape
     u = ones(q) / q
 
@@ -626,43 +626,6 @@ def gOfTGrad(L, alpha, ts, eta=None):
     dataPart = - array([v[idxes == j].sum() for j in range(k)])
     basicGradient = dataPart + eta
     return basicGradient - basicGradient.mean()
-
-
-def dual1solve2(L, alpha, lambda2=None, maxIters=200, report=nop, slow=False):
-    '''AGP to maximize dual1values through the equivalent unconstrained problem on ts.
-    Note we currently do not deal with any non-smoothness w.r.t. ts in any smart way.'''
-    alpha = float(alpha)
-    k, q = L.shape
-    if lambda2 is None:
-        lambda2 = zeros(q)
-    ts0 = tsFromLambda(L, lambda2)
-
-    u = ones(q) / q
-
-    def f(ts):
-        return -gOfTs(L, alpha, ts)
-
-    def g(ts):
-        return 0
-
-    def gradf(ts):
-        return -gOfTGrad(L, alpha, ts)
-
-    def proxg(Lip, ts):
-        return ts
-
-    if slow:
-        return lambda2FromTs(L, slowGradientProjectionMethod(f, g, gradf, proxg, ts0, maxIters=maxIters, report=report))
-    else:
-        return lambda2FromTs(L, fastGradientProjectionMethod(f, g, gradf, proxg, ts0, maxIters=maxIters, report=report,
-                                                             initLip=(1. / alpha)))
-
-
-def dual1solve3(L, alpha, lambda2=None, maxIters=200, theta=1, report=None):
-    k, q = L.shape
-    ts0 = L.min(1)
-    return lambda2FromTs(L, projectedSubgradient(lambda t: -gOfTGrad(L, alpha, t), lambda t: t - (t.sum() / k), ts0,
-                                                 theta=theta, maxIters=maxIters, report=report))
 
 
 def lambda2W(L, l2, alpha, eta):
@@ -717,6 +680,7 @@ def ts2WMixedColumns(L, ts, alpha, eta):
 
     # Find the best model to explain each point (not final)
     idxes = arr.argmax(0)
+    etavi = etai[idxes]
 
     v = vmin(alpha, lambda2)
 
@@ -731,7 +695,7 @@ def ts2WMixedColumns(L, ts, alpha, eta):
     nonAmbPos = (1 - ambiguous).nonzero()[0]
 
     # Set W for the non-ambiguous set of points
-    W[idxes[nonAmbPos], nonAmbPos] = etai[nonAmbPos ] * v[nonAmbPos]
+    W[idxes[nonAmbPos], nonAmbPos] = etavi[nonAmbPos ] * v[nonAmbPos]
     if ambiguous.any():
         # Below red stands for "reduced", corresponding to the ambiguous columns/points.
         redL = L[:, ambPos]
@@ -742,7 +706,7 @@ def ts2WMixedColumns(L, ts, alpha, eta):
                                             target=rawRedRowSums.sum())
         if (redRowSums < 0).any():
             pdb.set_trace()
-        redW = optimalWeightsMultipleModelsFixedProfile(redL, redV, rowSums=redRowSums)
+        redW = optimalWeightsMultipleModelsFixedProfile(redL, redV, eta, rowSums=redRowSums)
         # Combine
         W[:, ambiguous] = redW
 
@@ -902,26 +866,6 @@ def heuristic2L2ToW(L, l2, alpha, fudge=1e-15):
     return array([projectToSimplexNewton(w + mask) for (w, mask) in zip(W1, A)])
 
 
-def dual1solve4(L, alpha, fixedLowerBound=None, lambda2=None, maxIters=200, theta=1, report=None):
-    k, q = L.shape
-    lambda2 = zeros(q) if lambda2 is None else lambda2
-    ts0 = tsFromLambda(L, lambda2)
-
-    def lowerBounder(t):
-        l2 = lambda2FromTs(L, t)
-        W0 = heuristicL2ToW(L, l2, alpha)
-        W1 = weightsForMultipleLosses2FISTA(L, alpha, W=W0, maxIters=5)
-        return -penalizedMultipleWeightedLoss2(L, W1, alpha)
-
-    usedLowerBounder = lowerBounder if fixedLowerBound is None else lambda ts: fixedLowerBound
-
-    return lambda2FromTs(L, subgradientPolyakCFM(lambda t: -gOfTs(L, alpha, t),
-                                                 lambda t: -gOfTGrad(L, alpha, t),
-                                                 ts0,
-                                                 usedLowerBounder,
-                                                 maxIters=maxIters, report=report))
-
-
 def dual1solve5(L, alpha, eta=None, fixedLowerBound=None, lambda2=None, maxIters=30, report=None):
     k, _ = L.shape
     eta = eta if eta is not None else ones(k)/k
@@ -938,8 +882,8 @@ def dual1solve5Stream(L, alpha, eta=None, fixedLowerBound=None, lambda2=None):
     lambda2 = zeros(q) if lambda2 is None else lambda2
 
     nextLowerBound = fixedLowerBound
-    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t, eta=eta),
-                                         lambda t: -gOfTGrad(L, alpha, t, eta=eta),
+    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t, eta),
+                                         lambda t: -gOfTGrad(L, alpha, t, eta),
                                          tsFromLambda(L, lambda2),
                                          lowerBound=nextLowerBound,
                                          stepSize=200.)
@@ -950,14 +894,14 @@ def dual1solve5Stream(L, alpha, eta=None, fixedLowerBound=None, lambda2=None):
         ts = tStream.send(nextLowerBound)
 
 
-def lowDimSGDStream(L, alpha, subsamplingFactor, radius, ts0=None):
+def lowDimSGDStream(L, alpha, eta, subsamplingFactor, radius, ts0=None):
     k, n = L.shape
     sampleSize = ceil(subsamplingFactor*n)
     ts0 = randn(k) if ts0 is None else ts0
     def sGOfTGrad(t):
         return -gOfTGrad(subset(L, sampleSize),
                          alpha * sampleSize / n,
-                         t)
+                         t, eta)
     def emptyProj(t):
         return t
 
@@ -975,8 +919,8 @@ def lowDimSolveStream(L, alpha, eta, fixedLowerBound=None, ts0=None):
     ts0 = randn(k) if ts0 is None else ts0
     ts0 = ts0 - ts0.mean()
     nextLowerBound = fixedLowerBound
-    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t, eta=eta),
-                                         lambda t: -gOfTGrad(L, alpha, t, eta=eta),
+    tStream = proximalCuttingPlaneStream(lambda t: -gOfTs(L, alpha, t, eta),
+                                         lambda t: -gOfTGrad(L, alpha, t, eta),
                                          ts0,
                                          lowerBound=nextLowerBound,
                                          stepSize=1000.)
