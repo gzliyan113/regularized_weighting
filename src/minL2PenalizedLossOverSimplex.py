@@ -8,18 +8,17 @@ from numpy import (ones, vstack, zeros, arange, allclose, sum, array,
                    ones_like, nan_to_num, sort, log, ceil, mean, sqrt,
                    diag, median, zeros_like, abs, tile, cumsum)
 from numpy.linalg import norm
-from numpy.random import randint,randn
-import scipy.sparse as sp
+from numpy.random import randint, randn, permutation
 from scipy.optimize import fminbound
 import pdb
 from time import time
-from minimize import proximalCuttingPlaneStream, fastGradientProjectionStream, regularizedDualAveragingStream, sgdStream, averageLateWeightingStream
+from minimize import proximalCuttingPlaneStream, fastGradientProjectionStream, sgdStream
 from itertools import repeat, count
 from utility import projectToSimplexNewton, nonNegativePart, ei, oneSidedBinarySearch, projectedSubgradient, subgradientPolyakCFM, nop, reportAndBoundStream, fastGradientProjectionMethod, slowGradientProjectionMethod, subset
 from cvxoptJointWeightsOptimization import optimalWeightsMultipleModelsFixedProfile, dual1prox2
-from scipy.sparse import csr_matrix
 
 from optimized_rw_core import lambdaAndWinners
+
 
 def weightsForLosses(losses, alpha, goal=None):
     """ Given losses vector and regularization strength alpha, find the optimal weights. Regularization is squared
@@ -1087,21 +1086,27 @@ def aForTs(alpha, L, ts):
     return median(v-lambda2/(2*alpha))
 
 
-def dualPrimalCoordinateWise(L, alpha, eta):
+def dualPrimalCoordinateWise(L, alpha, eta, ts0=None):
     k, n = L.shape
-    ts = zeros(k)
+    ts = randn(k) if ts0 is None else ts0
+    ts = ts - ts.mean()
     yield ts
     while True:
-        v = vmin(alpha, lambda2FromTs(L, ts))
-        j = randint(1, k)
-        js = [j_ for j_ in range(k) if j_ is not j]
-        d = lambda2FromTs(L[js, :], ts[js]) + L[j, :]
-        srt = d.argsort()
-        d = d[srt]
-        v_sum = cumsum(v[srt])
-        first = (v_sum >= eta[j]).nonzero()[0][0]
-        ts[j] = d[first]
-        ts = ts - ts.mean()
-        yield ts
-
-
+        js = permutation(k)
+        for j in js:
+            v = vmin(alpha, lambda2FromTs(L, ts))
+            js = [j_ for j_ in range(k) if j_ is not j]
+            d = lambda2FromTs(L[js, :], ts[js]) + L[j, :]
+            srt = d.argsort()
+            d = d[srt]
+            v_sum = cumsum(v[srt])
+            fi = (v_sum >= eta[j]).nonzero()[0][0]
+            ts[j] = d[fi]
+            # The following seems to work ok, but doesn't seem correct mathematically...
+            '''if fi > 0:
+                ratio = (eta[j] - v_sum[fi - 1]) / (v_sum[fi] - v_sum[fi - 1])
+                ts[j] = d[fi - 1] + (d[fi] - d[fi - 1]) * ratio
+            else:
+                ts[j] = d[fi - 1]'''
+            ts = ts - ts.mean()
+            yield ts
