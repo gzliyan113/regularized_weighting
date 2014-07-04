@@ -4,9 +4,10 @@ In particular, if the install instructions do not work for you, please let us kn
 
 Issues
 ============
-# Does not support class imbalance (eta_j)
-# Serious dependency on cvxopt, which is hard to install
-# Corresponds to alpha formulation to alpha, not beta (no preweighting of data)
+
+- Does not support class imbalance (eta_j)
+- Serious dependency on cvxopt, which is hard to install
+- Corresponds to alpha formulation to alpha, not beta (no preweighting of data)
 
 
 Install instructions
