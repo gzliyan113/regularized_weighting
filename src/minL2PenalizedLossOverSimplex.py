@@ -6,7 +6,7 @@ Created on Thu Apr 19 09:56:38 2012
 """
 from numpy import (ones, vstack, zeros, arange, allclose, sum, array,
                    ones_like, nan_to_num, sort, log, ceil, mean, sqrt,
-                   diag, median, zeros_like, abs, tile, cumsum)
+                   diag, median, zeros_like, abs, tile, cumsum, floor, log2, infty, nonzero)
 from numpy.linalg import norm
 from numpy.random import randint, randn, permutation
 from scipy.optimize import fminbound
@@ -16,6 +16,7 @@ from minimize import proximalCuttingPlaneStream, fastGradientProjectionStream, s
 from itertools import repeat, count
 from utility import projectToSimplexNewton, nonNegativePart, ei, oneSidedBinarySearch, projectedSubgradient, subgradientPolyakCFM, nop, reportAndBoundStream, fastGradientProjectionMethod, slowGradientProjectionMethod, subset
 from cvxoptJointWeightsOptimization import optimalWeightsMultipleModelsFixedProfile, dual1prox2
+from lambdaAndWinnersCache import LambdaAndWinnersTree
 
 from optimized_rw_core import lambdaAndWinners
 
@@ -93,21 +94,39 @@ def weightsForMultipleLosses2DualPrimal2(L, alpha, eta, ts0=None, maxIters=1000,
             break
     return W
 
+
 def weightsForMultipleLosses2DualPrimal3(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
     lowDimDualStr = dualPrimalCoordinateWise(L, alpha, eta, ts0=ts0)
     ts = lowDimDualStr.next()
+    report('dc-', None, None, ts.copy())
     for i in xrange(maxIters):
         W = ts2W(L, ts, alpha, eta)
         primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
         report('p1' + str(i), W, None, None)
         ts = lowDimDualStr.send(-primalValue)
-        dualValue = gOfTs(L, alpha, eta, ts)
+        dualValue = gOfTs(L, alpha, ts, eta)
         report('dc' + str(i), None, None, ts)
         if primalValue - dualValue < dualityGapGoal:
             break
     return W
 
+
+def weightsForMultipleLosses2DualPrimal3c(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+    k, q = L.shape
+    lowDimDualStr = dualCoordinateWiseStream(L, alpha, eta, ts0=ts0)
+    ts = lowDimDualStr.next()
+    report('dc-', None, None, ts.copy())
+    for i in xrange(maxIters):
+        W = ts2W(L, ts, alpha, eta)
+        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
+        report('p1' + str(i), W, None, None)
+        ts = lowDimDualStr.send(-primalValue)
+        dualValue = gOfTs(L, alpha, ts, eta)
+        report('dc' + str(i), None, None, ts)
+        if primalValue - dualValue < dualityGapGoal:
+            break
+    return W
 
 def weightsForMultipleLosses2DualPrimal4(L, alpha, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
@@ -356,20 +375,18 @@ def weightsForMultipleLosses2GradientProjection(L, alpha, eta=None, W=None, maxI
     return W
 
 
-def weightsForMultipleLosses2FISTA(L, alpha, W=None, eta=None, maxIters=200, report=nop, row_sums=None):
+def weightsForMultipleLosses2FISTA(L, alpha, eta, W=None, maxIters=200, report=nop, row_sums=None):
     k, q = L.shape
-    eta = eta if eta is not None else ones(k)/k
     if W is None:
         W = ones((k, q)) / q
 
-    weightStream = weightsForMultipleLosses2FISTAStream(L, alpha, W, eta=eta, row_sums=row_sums)
+    weightStream = weightsForMultipleLosses2FISTAStream(L, alpha, eta, W, row_sums=row_sums)
 
     return reportAndBoundStream(weightStream, maxIters=maxIters, report=report)
 
 
-def weightsForMultipleLosses2FISTAStream(L, alpha, W, eta=None, row_sums=None):
+def weightsForMultipleLosses2FISTAStream(L, alpha, eta, W, row_sums=None):
     k, q = L.shape
-    eta = eta if eta is not None else ones(k)/k
     row_sums = row_sums if not row_sums is None else ones(k)
     if W is None:
         W = ones((k, q)) / q
@@ -1030,14 +1047,15 @@ def aForTs(alpha, L, ts):
     return median(v-lambda2/(2*alpha))
 
 
+
 def dualPrimalCoordinateWise(L, alpha, eta, ts0=None):
     k, n = L.shape
     ts = randn(k) if ts0 is None else ts0
     ts = ts - ts.mean()
     yield ts
     while True:
-        js = permutation(k)
-        for j in js:
+        js_perm = permutation(k)
+        for j in js_perm:
             v = vmin(alpha, lambda2FromTs(L, ts))
             js = [j_ for j_ in range(k) if j_ is not j]
             d = lambda2FromTs(L[js, :], ts[js]) + L[j, :]
@@ -1052,5 +1070,88 @@ def dualPrimalCoordinateWise(L, alpha, eta, ts0=None):
                 ts[j] = d[fi - 1] + (d[fi] - d[fi - 1]) * ratio
             else:
                 ts[j] = d[fi - 1]'''
-            ts = ts - ts.mean()
-            yield ts
+        yield ts
+
+
+def dualCoordinateWiseStream(L, alpha, eta, ts0=None):
+    k, n = L.shape
+    ts = randn(k) if ts0 is None else ts0
+    ts = ts - ts.mean()
+    c = LambdaAndWinnersTree(L, ts.copy())
+
+    yield ts.copy()
+    yield ts.copy()
+    yield ts.copy()
+    while True:
+        js_perm = permutation(k)
+        for j in js_perm:
+            l2, win = c.lambda_and_winners()
+            v = vmin(alpha, l2)
+            l2nj, _ = c.lambda_and_winners_all_but(j)
+            d = l2nj + L[j, :]
+            srt = d.argsort()
+            d = d[srt]
+            v_sum = cumsum(v[srt])
+            fi = (v_sum >= eta[j]).nonzero()[0][0]
+            ts[j] = d[fi]
+            # The following seems to work ok, but doesn't seem correct mathematically...
+            '''if fi > 0:
+                ratio = (eta[j] - v_sum[fi - 1]) / (v_sum[fi] - v_sum[fi - 1])
+                ts[j] = d[fi - 1] + (d[fi] - d[fi - 1]) * ratio
+            else:
+                ts[j] = d[fi - 1]'''
+            c.update_t_at(j, ts[j])
+        yield ts.copy()
+
+@profile
+def dualPrimalCoordinateWise(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+    k, n = L.shape
+    ts = randn(k) if ts0 is None else ts0
+    ts = ts - ts.mean()
+    report('dc-', None, None, ts.copy())
+    c = LambdaAndWinnersTree(L, ts.copy())
+    i = 0
+
+    while i < maxIters:
+        i += 1
+        W = ts2W(L, ts, alpha, eta)
+        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
+        report('p1' + str(i), W.copy(), None, None)
+
+        js_perm = permutation(k)
+        for j in js_perm:
+            l2, win = c.lambda_and_winners()
+            v = vmin(alpha, l2)
+
+            # not sure why this doesn't yet work
+            '''winj = nonzero(win == j)[0]
+            if winj.sum() > 0:
+                w_temp = (eta[j] ** -1) * v[winj]
+                W[j, :] = zeros(n)
+                W[j, winj] = projectToSimplexNewton(w_temp)'''
+
+
+            l2nj, _ = c.lambda_and_winners_all_but(j)
+            d = l2nj + L[j, :]
+            srt = d.argsort()
+            d = d[srt]
+            v_sum = cumsum(v[srt])
+            fi = (v_sum >= eta[j]).nonzero()[0][0]
+            ts[j] = d[fi]
+            # The following seems to work ok, but doesn't seem correct mathematically...
+            '''if fi > 0:
+                ratio = (eta[j] - v_sum[fi - 1]) / (v_sum[fi] - v_sum[fi - 1])
+                ts[j] = d[fi - 1] + (d[fi] - d[fi - 1]) * ratio
+            else:
+                ts[j] = d[fi - 1]'''
+            c.update_t_at(j, ts[j])
+
+        report('dc' + str(i), None, None, ts.copy())
+        dualValue = gOfTs(L, alpha, ts, eta)
+        if primalValue - dualValue < dualityGapGoal:
+            break
+
+
+def ts_lambda_and_winners_to_W(ts, l2, winners):
+    pass
+

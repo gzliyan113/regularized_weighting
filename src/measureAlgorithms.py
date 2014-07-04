@@ -3,7 +3,7 @@ from numpy.random import rand
 from numpy import ones, array, cumsum, nan, isnan, zeros, zeros_like, ceil, median, abs, sqrt
 import pdb
 
-from matplotlib.pyplot import semilogy, show, legend
+from matplotlib.pyplot import semilogy, show, legend, xlabel, ylabel, title
 from pandas import Series, DataFrame
 from minimize import averageLateWeightingStream
 from utility import projectToSimplexNewton, subset, reportAndBoundStream
@@ -60,8 +60,8 @@ def recordIntermediateLosses(func, params, L, alpha, eta):
 
 
 def makePrimalToFullWrapper(func):
-    def primalWrapper(L, alpha, report=None, **params):
-        func(L, alpha, report=lambda xk, k: report(k, xk, None, None), **params)
+    def primalWrapper(L, alpha, eta, report=None, **params):
+        func(L, alpha, eta, report=lambda xk, k: report(k, xk, None, None), **params)
 
     return primalWrapper
 
@@ -184,14 +184,14 @@ def dual5ThenReducedLinear(L, alpha, maxIters):
     return mp.sparsityUsingLambda2W(L, l2sharp, alpha)
 
 
-def dual5ThenLinear(L, alpha, maxIters, report=None):
+def dual5ThenLinear(L, alpha, eta, maxIters, report=None):
     k, q = L.shape
     report('d0', None, zeros(q), None)
     report('p0', zeros_like(L), None, None)
     l2 = mp.dual1solve5(L, alpha, maxIters=maxIters)
     report('d1', None, l2, None)
     print 'Starting linear completion of W'
-    W0 = mp.lambda2W(L, l2, alpha)
+    W0 = mp.lambda2W(L, l2, alpha, eta)
     print 'Done with linear completion of W'
     report('p1', W0, None, None)
     return W0
@@ -320,8 +320,8 @@ def asRange(a, b):
 
 
 
-k = 4
-q = 200
+k = 2
+q = 10000
 
 L = rand(k, q)
 alpha = 5.*q
@@ -339,21 +339,24 @@ print('Initialized data: k,q,alpha=%s,%s,%s' % (k,q,alpha))
 wrappedFista = makePrimalToFullWrapper(mp.weightsForMultipleLosses2FISTA)
 #stdp = {'maxIters': 50, 'ts': rand(k)}
 #longp = {'maxIters': 200, 'ts': rand(k)}
-stdp = {'maxIters': 50}
-longp = {'maxIters': 10*k}
+stdp = {'maxIters': 6}
+longp = {'maxIters': 100}
 algSpec = [
     # (dual5ThenCheaperLinear, 'iterations of dual5 then linear via kxk conversion.', stdp),
     #(mp.weightsForMultipleLosses2DualPrimal, 'dual-primal via kxk conversion.', longp),
-    (mp.weightsForMultipleLosses2DualPrimal2, 'dual-primal via t-L partition conversion.', stdp),
-    (mp.weightsForMultipleLosses2DualPrimal3, 'new dual-primal via t-L conversion.', stdp),
+    #(mp.weightsForMultipleLosses2DualPrimal3c, 'new dual-primal via t-L conversion, with cache.', stdp),
+    (mp.weightsForMultipleLosses2DualPrimal2, 'dual-primal via cutting plane w. t-L partition conversion.', longp),
+    (mp.dualPrimalCoordinateWise, 'dual-primal via coord-wise w. t-L partition conversion.', stdp),
+
+    #(mp.weightsForMultipleLosses2DualPrimal3, 'new dual-primal via t-L conversion.', stdp),
     #(mp.weightsForMultipleLosses2DualPrimal4, 'dual-primal via changed support correction.', stdp),
 #    (mp.weightsForMultipleLosses2DualPrimal5, 'dual-primal on CA + changed support correction.', stdp),
 #    (mp.weightsForMultipleLosses2DualPrimal6, 'dual-primal on C sum weight search + changed support correction.', stdp),
-#    (dual5ThenLinear, 'iterations of dual5 then linear.', stdp),
+    #(dual5ThenLinear, 'iterations of dual5 then linear.', stdp),
 #(noisyDualPrimal,'DualPrimal algorithm on 1/3rd of L.',stdp),
     #(sgdDualPrimal,'sgd DualPrimal algorithm.',stdp),
     #(sgdDualPrimal2,'sgd DualPrimal algorithm, with late averaging.',stdp),
-    #(wrappedFista,'FISTA baseline.',stdp),
+    (wrappedFista,'FISTA baseline.',stdp),
     #(makeDualLambdasToFullWrapper(mp.dual1solve5), 'ProxCutPlane dual baseline.', stdp),
 #(makeDualTsToFullWrapper(mp.dual1solve2), 'FISTA on dual (because it sometimes works to a point).', stdp),
     #(makePrimalToFullWrapper(mp.weightsForMultipleLosses2BlockMinimization), 'Blockwise minimization, round robins.', stdp),
@@ -380,8 +383,11 @@ for i, (l, tS, pS, dS) in enumerate(zip(descs, times, primals, duals)):
     #semilogy(cumsum(tS),lows,label=l,c=rgb,marker='o')
     #semilogy(cumsum(tS),highs,c=rgb,marker='+')
     if pS.notnull().any():
-        semilogy(cumsum(tS), pS - maxD, label=l, c=rgb, marker='o')
+        semilogy(cumsum(tS), pS - maxD, label=l+' (P)', c=rgb, marker='o')
     if dS.notnull().any():
-        semilogy(cumsum(tS), minP - dS, label=l, c=rgb, marker='+')
+        semilogy(cumsum(tS), minP - dS, label=l+' (D)', c=rgb, marker='+')
 legend()
+title('Weight finding @ (k=%d, n=%d, alpha=%.2f)' % (k, q, alpha))
+xlabel('Time in seconds')
+ylabel('Upper bound on sub optimality.')
 show()
