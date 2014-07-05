@@ -2,58 +2,61 @@ from itertools import izip, count
 from numpy import inf, zeros, array, isneginf, hstack, zeros_like
 from numpy.linalg import norm
 from numpy.core.umath import sqrt
-from cvxoptCuttingPlane import proximalIteration
 
 __author__ = 'danielv'
 
-#@profile
-def proximalCuttingPlaneStream(f, g, x0, lowerBound=None, stepSize=1.):
-    n = x0.shape[0]
-    xk = yk = ykn = x0
-    bko = f(x0)
-    bestLowerBound = -inf if lowerBound is None else lowerBound
-    if lowerBound is None:
-        A, Z, b = zeros((n, 0)), zeros((n, 0)), zeros(0)
-        #A,Z,b = zeros((n,1)),zeros((n,1)),array([-10e12])
-    else:
-        A, Z, b = zeros((n, 1)), zeros((n, 1)), array([lowerBound])
 
-    while (True):
-        newLowerBound = yield yk
-        # If a lower bound is added or improved by client, update the constraints.
-        if (not (newLowerBound is None)):
-            if isneginf(bestLowerBound):
-                A = hstack((zeros((n, 1)), A))
-                Z = hstack((zeros((n, 1)), Z))
-                b = hstack((newLowerBound, b))
-            if newLowerBound > bestLowerBound:
-                bestLowerBound = newLowerBound
-            b[0] = bestLowerBound
-            # Compute a new cutting plane through xk.
-        ak = g(xk)
-        zk = xk
-        bk = f(xk)
-        if bk < bko: # Serious step: next turn we'll change the reference point.
-            ykn = xk
-            bko = bk
-            stepSize = stepSize * 2
+try:
+    from cvxoptCuttingPlane import proximalIteration
+except ImportError:
+
+    def proximalCuttingPlaneStream(f, g, x0, lowerBound=None, stepSize=1.):
+        n = x0.shape[0]
+        xk = yk = ykn = x0
+        bko = f(x0)
+        bestLowerBound = -inf if lowerBound is None else lowerBound
+        if lowerBound is None:
+            A, Z, b = zeros((n, 0)), zeros((n, 0)), zeros(0)
+            #A,Z,b = zeros((n,1)),zeros((n,1)),array([-10e12])
         else:
-            stepSize = stepSize / 2
-        ''' Update function approximation (currently grows without bound).'''
-        A = hstack((A, ak.reshape(n, 1)))
-        Z = hstack((Z, zk.reshape(n, 1)))
-        b = hstack((b, array([bk])))
+            A, Z, b = zeros((n, 1)), zeros((n, 1)), array([lowerBound])
 
-        xk = proximalIteration(yk, 1. / stepSize, A, Z, b)
-        #xk = proximalIteration(yk, 1. / (k + 1), A, Z, b)
-        yk = ykn
+        while (True):
+            newLowerBound = yield yk
+            # If a lower bound is added or improved by client, update the constraints.
+            if (not (newLowerBound is None)):
+                if isneginf(bestLowerBound):
+                    A = hstack((zeros((n, 1)), A))
+                    Z = hstack((zeros((n, 1)), Z))
+                    b = hstack((newLowerBound, b))
+                if newLowerBound > bestLowerBound:
+                    bestLowerBound = newLowerBound
+                b[0] = bestLowerBound
+                # Compute a new cutting plane through xk.
+            ak = g(xk)
+            zk = xk
+            bk = f(xk)
+            if bk < bko: # Serious step: next turn we'll change the reference point.
+                ykn = xk
+                bko = bk
+                stepSize = stepSize * 2
+            else:
+                stepSize = stepSize / 2
+            ''' Update function approximation (currently grows without bound).'''
+            A = hstack((A, ak.reshape(n, 1)))
+            Z = hstack((Z, zk.reshape(n, 1)))
+            b = hstack((b, array([bk])))
+
+            xk = proximalIteration(yk, 1. / stepSize, A, Z, b)
+            #xk = proximalIteration(yk, 1. / (k + 1), A, Z, b)
+            yk = ykn
 
 def sgdStream(gradf_t, w0, stepsizes):
-    w=w0
+    w = w0
 
     for alpha, grad in izip(stepsizes, gradf_t):
         yield w
-        w = w -alpha*grad(w)
+        w = w - alpha * grad(w)
         
 
 def averageStream(stream):
@@ -67,31 +70,30 @@ def averageStream(stream):
 def averageLateWeightingStream(stream):
     aw = stream.next()
     yield aw
-    for n,w in enumerate(stream, start=2):
+    for n, w in enumerate(stream, start=2):
         aw = (2*w + aw * (n-1)) / float(n + 1)
         yield aw
 
+
 def regularizedDualAveragingStream(gradf_t, prox, w0, L, gamma):
-    ''' Essentially Algorithm 3 (Accelerated RDA method) from the paper
+    """ Essentially Algorithm 3 (Accelerated RDA method) from the paper
  Dual Averaging Methods for Regularized Stochastic Learning and Online Optimization by Lin Xiao, JMLR 2010.
 
 - L is the Lipschitz constant for the gradients.
 - prox(g,C) is a function that solves the proximal operator argmin_w {<g,w> + Psi(w) + C*h(w)}, where Psi is the regularization function and h is a strongly convex localizer (e.g. squared distance from a minimizer of Psi).
 - gradf_t is a sequence of instances of an unbiased estimators for gradients of the base function. For example, each may correspond to a different random minibatch of data points.
-- w0 is the minimizer of h. '''
-    #answers = []
+- w0 is the minimizer of h. """
     w = w0
     v = w
     A = 0
     gt = zeros_like(w)
-    #answers.append(w) #
     yield w
 
-    for t, gradf in izip(count(1.), gradf_t): #for t, gradf in zip(count(1),gradf_t):
+    for t, gradf in izip(count(1.), gradf_t):
         alpha_t = t / 2
-        beta_t = gamma * ((t + 1) ** (1.5)) / 2
+        beta_t = gamma * ((t + 1) ** 1.5) / 2
         # Calculate coefficients
-        A = A + alpha_t
+        A += alpha_t
         theta_t = alpha_t / A
         # Compute the query point
         u = (1 - theta_t) * w + theta_t * v
@@ -101,9 +103,7 @@ def regularizedDualAveragingStream(gradf_t, prox, w0, L, gamma):
         v = prox(gt, (L + beta_t) / A)
         # Interpolate for w
         w = (1 - theta_t) * w + theta_t * v
-        #answers.append(w) #
         yield w
-        #return answers
 
 
 def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
@@ -138,9 +138,9 @@ def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
         if F(pyk) > Q(Lipk, pyk, yk):
             break
         yield pyk
-        Lipk = Lipk / (eta ** 4)
+        Lipk /= eta ** 4
     '''Start standard algorithm'''
-    while (True):
+    while True:
         yield xk
 
         while True:
@@ -148,7 +148,7 @@ def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
             Fyk = F(pyk)
             if Fyk <= Q(Lipk, pyk, yk):
                 break
-            Lipk = Lipk * eta
+            Lipk *= eta
 
         zk = pyk
         tkn = (1 + sqrt(1 + 4 * (tk ** 2))) / 2
@@ -164,9 +164,9 @@ def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
         tk = tkn
 
 def projectedSubgradientStream(sgf, proj, x0, theta=1.):
-    ''' Minimize a function f whose subgradient is sgf over
+    """ Minimize a function f whose subgradient is sgf over
     a convex set of radius theta and orthogonal projection operator proj,
-    starting at x0. '''
+    starting at x0. """
     theta = float(theta)
     xk = x0
     # Using optimal step size for fixed number of iterations
