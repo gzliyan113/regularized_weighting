@@ -3,6 +3,7 @@ from numpy.random import rand, randn
 from lambdaAndWinnersCache import LambdaAndWinnersTree
 import pdb
 
+
 def test_family():
     k = 13
     n = 10
@@ -19,7 +20,7 @@ def test_family():
         p = c.parent_of(h)
         assert p == c.parent_of(c.paired_with(h))
 
-@profile
+
 def test_basic_scenario():
     k = 131
     n = 10
