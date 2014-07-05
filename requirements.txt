@@ -1,4 +1,2 @@
 cython
-scipy
-numpy
 scikit-learn
