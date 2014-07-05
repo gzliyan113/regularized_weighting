@@ -2,9 +2,35 @@ language: python
 python:
   - "2.7"
 # command to install dependencies
+before_install:
+- if [ ${TRAVIS_PYTHON_VERSION:0:1} == "2" ]; then wget http://repo.continuum.io/miniconda/Miniconda-3.3.0-Linux-x86_64.sh -O miniconda.sh; else wget http://repo.continuum.io/miniconda/Miniconda3-3.3.0-Linux-x86_64.sh -O miniconda.sh; fi
+- chmod +x miniconda.sh
+- ./miniconda.sh -b
+- export PATH=/home/travis/anaconda/bin:$PATH
+- conda update --yes conda
+# The next couple lines fix a crash with multiprocessing on Travis and are not specific to using Miniconda
+- sudo rm -rf /dev/shm
+- sudo ln -s /run/shm /dev/shm
+# Install packages
 install:
- - sudo apt-get install atlas-base-dev libatlas-dev libatlas3-base
+- python setup.py install
+
+
+install:
+- conda install --yes python=$TRAVIS_PYTHON_VERSION atlas numpy scipy matplotlib nose dateutil pandas statsmodels
+# Coverage packages are on my binstar channel
+#- conda install --yes -c dan_blanchard python-coveralls nose-cov
  - "pip install -r requirements.txt"
 before_script: "cd src; python setup.py build_ext --inplace"
 # command to run tests
 script: nosetests
+
+
+# Run test with coverage
+#script:
+#- nosetests --with-cov --cov YOUR_PACKAGE_NAME_HERE --cov-config .coveragerc --logging-level=INFO
+
+# Calculate coverage
+#after_success:
+#- coveralls --config_file .coveragerc
+
