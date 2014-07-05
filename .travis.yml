@@ -12,8 +12,8 @@ before_install:
 - sudo rm -rf /dev/shm
 - sudo ln -s /run/shm /dev/shm
 # Install packages
-install:
-- python setup.py install
+#install:
+#- python setup.py install
 
 
 install:
