@@ -6,7 +6,7 @@ Created on Thu Apr 19 09:56:38 2012
 """
 from numpy import (ones, vstack, zeros, arange, allclose, sum, array,
                    ones_like, nan_to_num, sort, log, ceil, mean, sqrt,
-                   diag, median, zeros_like, abs, tile, cumsum, floor, log2, infty, nonzero)
+                   diag, median, zeros_like, abs, tile, cumsum, floor, log2, infty, nonzero, maximum, ndarray, where)
 from numpy.linalg import norm
 from numpy.random import randint, randn, permutation
 from scipy.optimize import fminbound
@@ -44,16 +44,17 @@ def weightsForMultipleLosses2(L, alpha, maxIters=100, report=nop):
     return weightsForMultipleLosses2DualPrimal(L, alpha, report=report)
 
 
-def weightsDualPrimal(L, alpha, tsStreamMaker, toPrimal, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+def weightsDualPrimal(L, alpha, eta, ratio, tsStreamMaker, toPrimal, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
-    lowDimDualStr = tsStreamMaker(L, alpha, ts0=ts0)
+    lowDimDualStr = tsStreamMaker(L, alpha, eta, ts0=ts0)
     ts = lowDimDualStr.next()
     for i in xrange(maxIters):
-        W = toPrimal(L, ts, alpha)
-        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha)
+        W = toPrimal(L, ts, alpha, eta)
+        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
         report('p1' + str(i), W, None, None)
-        ts = lowDimDualStr.send(-primalValue)
-        dualValue = gOfTs(L, alpha, ts)
+        for _ in range(ratio):
+            ts = lowDimDualStr.send(-primalValue)
+        dualValue = gOfTs(L, alpha, ts, eta)
         report('dc' + str(i), None, None, ts)
         if primalValue - dualValue < dualityGapGoal:
             break
