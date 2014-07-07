@@ -8,8 +8,6 @@ __author__ = 'danielv'
 
 try:
     from cvxoptCuttingPlane import proximalIteration
-except ImportError:
-
     def proximalCuttingPlaneStream(f, g, x0, lowerBound=None, stepSize=1.):
         n = x0.shape[0]
         xk = yk = ykn = x0
@@ -50,6 +48,8 @@ except ImportError:
             xk = proximalIteration(yk, 1. / stepSize, A, Z, b)
             #xk = proximalIteration(yk, 1. / (k + 1), A, Z, b)
             yk = ykn
+except ImportError:
+    pass
 
 def sgdStream(gradf_t, w0, stepsizes):
     w = w0
