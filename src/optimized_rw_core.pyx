@@ -36,8 +36,8 @@ def lambdaAndWinners(L, np.ndarray[DTYPE_t, ndim=1] ts):
     k,n = L.shape
     cdef np.ndarray[ITYPE_t, ndim=1] idxes = np.zeros(n,dtype=np.intp)
     cdef np.ndarray[DTYPE_t, ndim=1] maxes = np.zeros(n)
-    cdef int i
-    cdef int j
+    cdef unsigned int i
+    cdef unsigned int j
     cdef int colWin
     cdef double colMax
     cdef double curr
@@ -54,3 +54,25 @@ def lambdaAndWinners(L, np.ndarray[DTYPE_t, ndim=1] ts):
         maxes[i] = colMax
 
     return maxes, idxes
+
+@cython.boundscheck(False)
+def update_win_lam(np.ndarray[DTYPE_t, ndim=1] lam_tu,
+                   np.ndarray[ITYPE_t, ndim=1] win_tu,
+                   np.ndarray[DTYPE_t, ndim=1] lam_r,
+                   np.ndarray[ITYPE_t, ndim=1] win_r):
+    cdef unsigned int i
+    cdef double lr
+    cdef int wr
+    n = lam_tu.shape[0]
+    if ((lam_r.shape[0] is not n) or
+        (win_tu.shape[0] is not n) or
+        (win_r.shape[0] is not n)):
+        print("Inconsistent lengths in update_win_lam.")
+    for i in range(n):
+        lr = lam_r[i]
+        if lam_tu[i] < lr:
+            wr = win_r[i]
+            win_tu[i] = wr
+            lam_tu[i] = lr
+
+
