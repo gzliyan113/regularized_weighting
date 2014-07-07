@@ -61,6 +61,34 @@ def weightsDualPrimal(L, alpha, eta, ratio, tsStreamMaker, toPrimal, ts0=None, m
     return W
 
 
+def dualPrimalSlowAndSafe(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+    def tsToW(L, ts, alpha, eta):
+        return lambda2W(L, lambda2FromTs(L, ts), alpha, eta)
+    return weightsDualPrimal(L, alpha, eta, 50, lowDimSolveStream, tsToW, ts0=ts0,
+                             maxIters=maxIters, dualityGapGoal=dualityGapGoal,
+                             report=report)
+
+
+def dualPrimalSlowAndScalable(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+    def tsToW(L, ts, alpha, eta):
+        return ts2WFista(L, ts, alpha, eta,)
+    return weightsDualPrimal(L, alpha, eta, 10, lowDimSolveStream, ts2WFista, ts0=ts0,
+                             maxIters=maxIters, dualityGapGoal=dualityGapGoal,
+                             report=report)
+
+
+def dualPrimalFastAndExperimantal(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+    return weightsDualPrimal(L, alpha, eta, 10, lowDimSolveStream, ts2W2, ts0=ts0,
+                             maxIters=maxIters, dualityGapGoal=dualityGapGoal,
+                             report=report)
+
+
+def dualPrimalFastAndImprecise(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+    return weightsDualPrimal(L, alpha, eta, 10, lowDimSolveStream, ts2W, ts0=ts0,
+                             maxIters=maxIters, dualityGapGoal=dualityGapGoal,
+                             report=report)
+
+
 def weightsForMultipleLosses2DualPrimal(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
     lowDimDualStr = lowDimSolveStream(L, alpha, eta, ts0=ts0)
@@ -683,6 +711,30 @@ def ts2W(L, ts, alpha, eta):
     return W
 
 
+def ts2W2(L, ts, alpha, eta):
+    """ Create a weight matrix from losses and adjustment factors.
+
+    In contrast to other methods, we use ts-L to partition the data points,
+    then directly create valid weight distributions."""
+
+    k, n = L.shape
+
+    # Find the best model to explain each point, and base weights there
+    lambda2, idxes = lambdaAndWinners(L, ts)
+    v = vmin(alpha, lambda2)
+
+    # Compute weights.
+    W = zeros((k, n))
+    for j in range(k):
+        jidx = where(idxes == j)[0]
+        if sum(jidx) > 0:
+            partial_wj = projectToSimplexNewton(v[jidx]/eta[j])
+            W[j, jidx] = partial_wj
+        else:
+            W[j, :] = ones(n)/n
+    return W
+
+
 def ts2WMixedColumns(L, ts, alpha, eta):
     """Create a weight matrix from losses and given adjustment factors.
 
@@ -783,49 +835,16 @@ def ts2WMixedColumnsCorrectedSupport(L, ts, alpha):
 
     return array([w / sum(w) for w in W])
 
-def ts2WMixedColumnsFista(L, ts, alpha):
+
+def ts2WFista(L, ts, alpha, eta):
     """Create a weight matrix from losses and given adjustment factors.
 
     An important subtlety is that only for the optimal ts do we know that
     the resulting weight rows sum to 1."""
     k, n = L.shape
-    lambda2 = lambda2FromTs(L, ts)
+    W0 = ts2W(L, ts, alpha, eta)
 
-    # Compute the adjusted fit
-    arr = array([ts[j] - L[j, :] for j in range(k)])
-
-    # Find the best model to explain each point (not final)
-    idxes = arr.argmax(0)
-
-    v = vmin(alpha, lambda2)
-
-    # Set the easy parts of W
-    W = zeros((k, n))
-
-    # Detect near ties
-    maxes = list(arr.max(0))
-    co_maximizers = abs(arr - maxes) < 0.00001
-    ambiguous = (co_maximizers.sum(0) > 1)
-    ambPos = ambiguous.nonzero()[0]
-    nonAmbPos = (1 - ambiguous).nonzero()[0]
-
-    # Set W for the non-ambiguous set of points
-    W[idxes[nonAmbPos], nonAmbPos] = k * v[nonAmbPos]
-    if ambiguous.any():
-        # Below red stands for "reduced", corresponding to the ambiguous columns/points.
-        redL = L[:, ambPos]
-
-        rowSums = W[:, nonAmbPos].sum(1)
-        rawRedRowSums = 1 - rowSums
-        redRowSums = projectToSimplexNewton(rawRedRowSums,
-                                            target=rawRedRowSums.sum())
-        if (redRowSums < 0).any():
-            pdb.set_trace()
-        redW = weightsForMultipleLosses2FISTA(redL, alpha, row_sums=redRowSums)
-        # Combine
-        W[:, ambiguous] = redW
-
-    return array([projectToSimplexNewton(w) for w in W])
+    return weightsForMultipleLosses2FISTA(L, alpha, eta, W=W0, maxIters=10)
 
 
 def t2wExperimental(L, ts):

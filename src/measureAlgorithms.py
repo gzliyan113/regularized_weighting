@@ -348,6 +348,10 @@ algSpec = [
     (mp.weightsForMultipleLosses2DualPrimal2, 'dual-primal via cutting plane w. t-L partition conversion.', longp),
     (mp.dualPrimalCoordinateWise, 'dual-primal via coord-wise w. t-L partition conversion.', stdp),
 
+    (mp.dualPrimalFastAndExperimantal, 'dual-primal cutting and ts2W2 convert.', longp),
+    (mp.dualPrimalFastAndImprecise, 'dual-primal cutting and ts2W convert.', longp),
+    #(mp.dualPrimalSlowAndSafe, 'dual-primal cutting and OTS convert.', longp),
+    #(mp.dualPrimalSlowAndScalable, 'dual-primal cutting and t-L+FISTA convert.', longp),
     #(mp.weightsForMultipleLosses2DualPrimal3, 'new dual-primal via t-L conversion.', stdp),
     #(mp.weightsForMultipleLosses2DualPrimal4, 'dual-primal via changed support correction.', stdp),
 #    (mp.weightsForMultipleLosses2DualPrimal5, 'dual-primal on CA + changed support correction.', stdp),
