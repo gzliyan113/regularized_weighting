@@ -1,4 +1,5 @@
-from numpy import (ones, vstack, zeros, ceil, log2, infty, where)
+from numpy import (ones, vstack, zeros, ceil, log2, infty, where, maximum)
+from optimized_rw_core import update_win_lam
 import pdb
 
 
@@ -34,12 +35,13 @@ class LambdaAndWinnersTree:
         # Augment with cached information from higher levels.
         while curr_cache > 0:
             other_cache = self.paired_with(curr_cache)
-            other_win = self.winners[other_cache , :]
+            other_win = self.winners[other_cache, :]
             other_lam = self.cache[other_cache, :]
 
+            # update_win_lam(curr_lam, curr_win, other_lam, other_win)
             # Order of next two updates matters!!
             curr_win = where(other_lam > curr_lam, other_win, curr_win)
-            curr_lam = where(other_lam > curr_lam, other_lam, curr_lam)
+            curr_lam = maximum(other_lam, curr_lam)
 
             curr_cache = self.parent_of(curr_cache)
 
@@ -59,7 +61,7 @@ class LambdaAndWinnersTree:
         while curr_cache > 0:
             # Order of next two updates matters!!
             son_win = where(other_lam > son_lam, other_win, son_win)
-            son_lam = where(other_lam > son_lam, other_lam, son_lam)
+            son_lam = maximum(other_lam, son_lam)
 
             self.cache[curr_cache, :] = son_lam
             self.winners[curr_cache, :] = son_win
@@ -71,7 +73,7 @@ class LambdaAndWinnersTree:
 
         # update root
         son_win = where(other_lam > son_lam, other_win, son_win)
-        son_lam = where(other_lam > son_lam, other_lam, son_lam)
+        son_lam = maximum(other_lam, son_lam)
         self.winners[curr_cache, :] = son_win
         self.cache[curr_cache, :] = son_lam
 

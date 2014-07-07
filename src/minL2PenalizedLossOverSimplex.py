@@ -85,7 +85,7 @@ def weightsForMultipleLosses2DualPrimal2(L, alpha, eta, ts0=None, maxIters=1000,
         W = ts2W(L, ts, alpha, eta)
         primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
         report('p1' + str(i), W, None, None)
-        for h in range(3):
+        for h in range(10):
             ts = lowDimDualStr.send(-primalValue)
             report('dc2i' + str(i)  + 'h' + str(h), None, None, ts)
         dualValue = gOfTs(L, alpha, ts, eta)
@@ -1103,7 +1103,7 @@ def dualCoordinateWiseStream(L, alpha, eta, ts0=None):
             c.update_t_at(j, ts[j])
         yield ts.copy()
 
-@profile
+#@profile
 def dualPrimalCoordinateWise(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, n = L.shape
     ts = randn(k) if ts0 is None else ts0
@@ -1115,43 +1115,29 @@ def dualPrimalCoordinateWise(L, alpha, eta, ts0=None, maxIters=1000, dualityGapG
     while i < maxIters:
         i += 1
         W = ts2W(L, ts, alpha, eta)
-        primalValue = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
+        primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
         report('p1' + str(i), W.copy(), None, None)
 
         js_perm = permutation(k)
         for j in js_perm:
+            # compute a v
             l2, win = c.lambda_and_winners()
             v = vmin(alpha, l2)
 
-            # not sure why this doesn't yet work
-            '''winj = nonzero(win == j)[0]
-            if winj.sum() > 0:
-                w_temp = (eta[j] ** -1) * v[winj]
-                W[j, :] = zeros(n)
-                W[j, winj] = projectToSimplexNewton(w_temp)'''
-
-
+            # compute disadvantage of current model, sort by it
             l2nj, _ = c.lambda_and_winners_all_but(j)
             d = l2nj + L[j, :]
             srt = d.argsort()
             d = d[srt]
+
+            # find t to cancel advantage at correct cumulative v
             v_sum = cumsum(v[srt])
             fi = (v_sum >= eta[j]).nonzero()[0][0]
             ts[j] = d[fi]
-            # The following seems to work ok, but doesn't seem correct mathematically...
-            '''if fi > 0:
-                ratio = (eta[j] - v_sum[fi - 1]) / (v_sum[fi] - v_sum[fi - 1])
-                ts[j] = d[fi - 1] + (d[fi] - d[fi - 1]) * ratio
-            else:
-                ts[j] = d[fi - 1]'''
+
             c.update_t_at(j, ts[j])
+            report('dc' + str(i) + 'j' + str(j), None, None, ts.copy())
 
-        report('dc' + str(i), None, None, ts.copy())
-        dualValue = gOfTs(L, alpha, ts, eta)
-        if primalValue - dualValue < dualityGapGoal:
+        dual_value = gOfTs(L, alpha, ts, eta)
+        if primal_value - dual_value < dualityGapGoal:
             break
-
-
-def ts_lambda_and_winners_to_W(ts, l2, winners):
-    pass
-
