@@ -11,7 +11,7 @@ before_install:
 
 install:
   - conda install --yes python=$TRAVIS_PYTHON_VERSION atlas numpy scipy matplotlib nose dateutil pandas statsmodels cython scikit-learn
-  - conda install -c https://conda.binstar.org/jjhelmus cvxopt_glpk
+  - conda install --yes -c https://conda.binstar.org/jjhelmus cvxopt_glpk
   #- pip install cvxopt
   #- "pip install -r requirements.txt"
 
