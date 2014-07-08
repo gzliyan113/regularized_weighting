@@ -1,5 +1,5 @@
 from scipy.io import loadmat
-from numpy import flatnonzero, cumsum, unique, reshape, argsort, size
+from numpy import array, flatnonzero, cumsum, unique, reshape, argsort, size
 from numpy.linalg import svd
 import numpy as np
 import weightedModelTypes
@@ -43,4 +43,5 @@ def loadSet(hopkinsLocation, name):
         Y = Yreshaped.byteswap().newbyteorder().T
         return (Y, reshape(S[newOrder], size(S)))
     except IOError:
+        print "Cannot load hopkins dataset from " + hopkinsLocation
         return (array([]), array([]))
