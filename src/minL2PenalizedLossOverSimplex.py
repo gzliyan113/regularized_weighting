@@ -44,7 +44,68 @@ def weightsForMultipleLosses2(L, alpha, maxIters=100, report=nop):
     return weightsForMultipleLosses2DualPrimal(L, alpha, report=report)
 
 
-def weightsDualPrimal(L, alpha, eta, ratio, tsStreamMaker, toPrimal, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+def weightsCombinedConsistent(L, alpha, eta, ts0=None, maxIters=1000, report=nop):
+    return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W, weightsForMultipleLosses2FISTAStream, ts0=ts0,
+                           max_iters=maxIters, relative_duality_gap=1e-9,
+                           report=report)
+
+
+def weightsCombined(L, alpha, eta, ratio, ts_stream_maker, to_primal,
+                    primal_stream_maker, ts0=None, W0=None, max_iters=None,
+                    relative_duality_gap=1e-2, report=nop):
+    """
+     Allocate half of time to improving our best primal solution, and half
+     of time to generating dual solutions and converting them to primal
+     candidates.
+    """
+    k, n = L.shape
+    W = W0 if W0 is not None else ones((k, n)) / n
+    primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
+    primStr = primal_stream_maker(L, alpha, eta, W)
+
+    # Enough iterations for FISTA to converge from the default W.
+    max_iters = max_iters if max_iters is not None else (
+        k * alpha / n / (primal_value * relative_duality_gap))
+
+    primalTime = .0
+    dualTime = .0
+
+    tsStr = ts_stream_maker(L, alpha, eta, ts0=ts0)
+
+    dualTime, ts = timedNext(dualTime, tsStr)
+    dual_value = gOfTs(L, alpha, ts, eta)
+    doPrimal = True
+    ts = tsStr.next()
+    Wc = to_primal(L, ts, alpha, eta)
+    for i in xrange(max_iters):
+        if doPrimal:
+            primalTime, W = timedNext(primalTime, primStr)
+            primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
+            report('p1' + str(i), W, None, None)
+            if dualTime < primalTime:
+                doPrimal = False
+        else:
+            for _ in range(ratio):
+                dualTime, ts = timedNext(dualTime, tsStr, -primal_value)
+            dual_value = gOfTs(L, alpha, ts, eta)
+            report('dc' + str(i), None, None, ts)
+            if dualTime > primalTime:
+                doPrimal = True
+                # Create a primal candidate from dual, replace the current primal if better.
+                Wc = to_primal(L, ts, alpha, eta)
+                primal_c_value = penalizedMultipleWeightedLoss2(L, Wc, alpha, eta=eta)
+                if primal_value > primal_c_value:
+                    W = Wc
+                    primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
+                    primStr = primal_stream_maker(L, alpha, eta, W)
+
+        if dual_value > primal_value * (1 - relative_duality_gap):
+            break
+    return W, ts
+
+
+def weightsDualPrimal(L, alpha, eta, ratio, tsStreamMaker, toPrimal, ts0=None, maxIters=1000, dualityGapGoal=1e-6,
+                      report=nop):
     k, q = L.shape
     lowDimDualStr = tsStreamMaker(L, alpha, eta, ts0=ts0)
     ts = lowDimDualStr.next()
@@ -254,7 +315,7 @@ def weightsForMultipleLosses2TimedStreams(L, alpha, eta=None, l2=None, W=None, m
     k, q = L.shape
     eta = eta if eta is not None else ones(k)/k
     W = ones((k, q)) / q if (W is None) else W
-    primalPointStream = weightsForMultipleLosses2FISTAStream(L, alpha, eta=eta, W=W)
+    primalPointStream = weightsForMultipleLosses2FISTAStream(L, alpha, eta=eta, W0=W)
     primalTime = .0
     dualTime = .0
 
@@ -414,11 +475,11 @@ def weightsForMultipleLosses2FISTA(L, alpha, eta, W=None, maxIters=200, report=n
     return reportAndBoundStream(weightStream, maxIters=maxIters, report=report)
 
 
-def weightsForMultipleLosses2FISTAStream(L, alpha, eta, W, row_sums=None):
+def weightsForMultipleLosses2FISTAStream(L, alpha, eta, W0, row_sums=None):
     k, q = L.shape
     row_sums = row_sums if not row_sums is None else ones(k)
-    if W is None:
-        W = ones((k, q)) / q
+    if W0 is None:
+        W0 = ones((k, q)) / q
 
     f = lambda Wl: penalizedMultipleWeightedLoss2(L, Wl.reshape((k, q)), alpha, eta=eta)
     g = lambda Wl: 0 # Will be applied only to valid weights...
@@ -428,7 +489,7 @@ def weightsForMultipleLosses2FISTAStream(L, alpha, eta, W, row_sums=None):
         for (row_sum, w)
         in zip(row_sums, old_W)])
 
-    return fastGradientProjectionStream(f, g, grad_f, prox_g, W)
+    return fastGradientProjectionStream(f, g, grad_f, prox_g, W0)
 
 
 def penalizedMultipleWeightedLoss2Gradient(L, W, alpha, eta=None):
