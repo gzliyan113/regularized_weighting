@@ -13,14 +13,6 @@ def lloydsInitialStates(data, model, k=0, modelParameters=None):
 
     return [model(data, w, modelParameters) for w in newW]
 
-#@profile
-def jointlyPenalizedInitialStates(data, model, alpha, k=0, modelParameters=None, dualityGapGoal=1e-5):
-    #print('Generating initial losses from random models.')
-    L = model.randomModelLosses(data, k, modelParameters)
-    W, _ = weightsForMultipleLosses2TimedStreams(L, alpha, dualityGapGoal=dualityGapGoal)
-
-    return [model(data, w, modelParameters) for w in W]
-
 
 def lloydsIteration(L):
     bestModelPerPoint = L.argmin(0)
@@ -42,6 +34,15 @@ def lloydsAlgorithm(initialStates, maxSteps=10):
     return multipleModelEvolution(initialStates,
                                   lambda L, W, s: (lloydsIteration(L), s),
                                   maxSteps=maxSteps)
+
+
+#@profile
+def jointlyPenalizedInitialStates(data, model, alpha, k=0, modelParameters=None, dualityGapGoal=1e-5):
+    #print('Generating initial losses from random models.')
+    L = model.randomModelLosses(data, k, modelParameters)
+    W, _ = weightsForMultipleLosses2TimedStreams(L, alpha, dualityGapGoal=dualityGapGoal)
+
+    return [model(data, w, modelParameters) for w in W]
 
 
 def learnJointlyPenalizedMultipleModels(initialStates, alpha, maxSteps=10, dualityGapGoal=1e-5):
