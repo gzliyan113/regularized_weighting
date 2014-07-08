@@ -4,7 +4,6 @@ from cvxopt import matrix, spdiag
 from numpy import hstack, ones, array
 
 
-@profile
 def proximalIteration(y, gamma, A, Z, b):
     """ Columns of A give gradients of linear functions having the values in b
     at the locations of the columns of Z. The maximum of these functions is F,
