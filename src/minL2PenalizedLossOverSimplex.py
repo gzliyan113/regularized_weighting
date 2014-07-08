@@ -35,9 +35,9 @@ def adjustedWeightsForWeightedLosses(L, W, eta, alpha, j):
     k, n = L.shape
     u = ones(n) / n
     all = arange(k)
-    abj = all[all!=j] # all but j
-    goal = (eta[j]**-1.)*(u-(W[abj,:].T*eta[abj]).T.sum(0))
-    return weightsForLosses(L[j,:], alpha*eta[j],goal=goal)
+    abj = all[all != j] # all but j
+    goal = (eta[j] ** -1.) * (u - (W[abj, :].T * eta[abj]).T.sum(0))
+    return weightsForLosses(L[j, :], alpha * eta[j], goal=goal)
 
 
 def weightsForMultipleLosses2(L, alpha, maxIters=100, report=nop):
@@ -125,6 +125,7 @@ def weightsDualPrimal(L, alpha, eta, ratio, tsStreamMaker, toPrimal, ts0=None, m
 def dualPrimalSlowAndSafe(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     def tsToW(L, ts, alpha, eta):
         return lambda2W(L, lambda2FromTs(L, ts), alpha, eta)
+
     return weightsDualPrimal(L, alpha, eta, 50, lowDimSolveStream, tsToW, ts0=ts0,
                              maxIters=maxIters, dualityGapGoal=dualityGapGoal,
                              report=report)
@@ -132,13 +133,14 @@ def dualPrimalSlowAndSafe(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal
 
 def dualPrimalSlowAndScalable(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     def tsToW(L, ts, alpha, eta):
-        return ts2WFista(L, ts, alpha, eta,)
+        return ts2WFista(L, ts, alpha, eta, )
+
     return weightsDualPrimal(L, alpha, eta, 10, lowDimSolveStream, ts2WFista, ts0=ts0,
                              maxIters=maxIters, dualityGapGoal=dualityGapGoal,
                              report=report)
 
 
-def dualPrimalFastAndExperimantal(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
+def dualPrimalFastAndExperimental(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     return weightsDualPrimal(L, alpha, eta, 10, lowDimSolveStream, ts2W2, ts0=ts0,
                              maxIters=maxIters, dualityGapGoal=dualityGapGoal,
                              report=report)
@@ -177,7 +179,7 @@ def weightsForMultipleLosses2DualPrimal2(L, alpha, eta, ts0=None, maxIters=1000,
         report('p1' + str(i), W, None, None)
         for h in range(10):
             ts = lowDimDualStr.send(-primalValue)
-            report('dc2i' + str(i)  + 'h' + str(h), None, None, ts)
+            report('dc2i' + str(i) + 'h' + str(h), None, None, ts)
         dualValue = gOfTs(L, alpha, ts, eta)
         report('dc2i' + str(i), None, None, ts)
         if primalValue - dualValue < dualityGapGoal:
@@ -217,6 +219,7 @@ def weightsForMultipleLosses2DualPrimal3c(L, alpha, eta, ts0=None, maxIters=1000
         if primalValue - dualValue < dualityGapGoal:
             break
     return W
+
 
 def weightsForMultipleLosses2DualPrimal4(L, alpha, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
     k, q = L.shape
@@ -313,7 +316,7 @@ def weightsForMultipleLosses2TimedStreams(L, alpha, eta=None, l2=None, W=None, m
                                           dualityGapGoal=1e-6, report=nop):
     '''Combine calls to primal and dual optimizers to get certified solution.'''
     k, q = L.shape
-    eta = eta if eta is not None else ones(k)/k
+    eta = eta if eta is not None else ones(k) / k
     W = ones((k, q)) / q if (W is None) else W
     primalPointStream = weightsForMultipleLosses2FISTAStream(L, alpha, eta=eta, W0=W)
     primalTime = .0
@@ -322,7 +325,7 @@ def weightsForMultipleLosses2TimedStreams(L, alpha, eta=None, l2=None, W=None, m
     #print('Starting weight finding optimization for k=%d q=%d alpha=%f gap goal=%g' % (k,q,alpha,dualityGapGoal))
     maxIters = maxIters if not maxIters is None else 2000
     primal = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
-    
+
     #dualPointStream = lowDimSolveStream(L, alpha, lambda2=l2, fixedLowerBound=-primal)
     dualPointStream = dual1solve5Stream(L, alpha, eta=eta, lambda2=l2, fixedLowerBound=-primal)
     l2init = zeros(q) if (l2 is None) else l2
@@ -344,7 +347,7 @@ def weightsForMultipleLosses2TimedStreams(L, alpha, eta=None, l2=None, W=None, m
                 #if dualTime < primalTime:
                 #print("Primal time: %f val: %f" % (primalTime, primal))
         else:
-            print('Achieved primal - dual = gap: %.6f - %.6f = %.6f' % (primal,dual,primal - dual))
+            print('Achieved primal - dual = gap: %.6f - %.6f = %.6f' % (primal, dual, primal - dual))
             return W, l2
     print('Ran out at primal - dual = gap: %g - %g = %g' % (primal, dual, primal - dual))
     return W, l2
@@ -382,7 +385,7 @@ def weightsForMultipleLosses2BlockMinimization(L, alpha, eta=None, W=None, maxIt
     alpha = float(alpha)
     startAlpha = alpha if startAlpha is None else float(startAlpha)
     k, q = L.shape
-    eta = ones(k)/k if eta is None else eta
+    eta = ones(k) / k if eta is None else eta
 
     if W is not None:
         W = W.copy()
@@ -452,7 +455,7 @@ def weightsForMultipleLosses2RandomBlockMinimization(L, alpha, W=None, maxIters=
 
 def weightsForMultipleLosses2GradientProjection(L, alpha, eta=None, W=None, maxIters=200):
     k, q = L.shape
-    eta = eta if eta is not None else ones(k)/k
+    eta = eta if eta is not None else ones(k) / k
 
     tk = alpha ** -1
     if W is None:
@@ -494,12 +497,12 @@ def weightsForMultipleLosses2FISTAStream(L, alpha, eta, W0, row_sums=None):
 
 def penalizedMultipleWeightedLoss2Gradient(L, W, alpha, eta=None):
     k, q = L.shape
-    eta = eta if eta is not None else ones(k)/k
+    eta = eta if eta is not None else ones(k) / k
     u = ones(q) / q
 
     lossesPart = (L.T * eta).T
     vMinusUniform = eta.dot(W) - u
-    regPart = (2 * alpha * eta.reshape((k,1))) * vMinusUniform.reshape((1,q))
+    regPart = (2 * alpha * eta.reshape((k, 1))) * vMinusUniform.reshape((1, q))
     return regPart + lossesPart
 
 
@@ -738,6 +741,7 @@ def gOfTGrad(L, alpha, ts, eta):
 def lambda2W(L, l2, alpha, eta):
     return optimalWeightsMultipleModelsFixedProfile(L, vmin(alpha, l2), eta)
 
+
 '''
 def lambdaAndWinners(L, ts):
     arr = (ts - L.T).T
@@ -768,7 +772,7 @@ def ts2W(L, ts, alpha, eta):
             partial_wj = projectToSimplexNewton(kMaxes[idxes == j] / eta[j])
             W[j, idxes == j] = partial_wj
         else:
-            W[j, :] = ones(n)/n
+            W[j, :] = ones(n) / n
     return W
 
 
@@ -789,10 +793,10 @@ def ts2W2(L, ts, alpha, eta):
     for j in range(k):
         jidx = where(idxes == j)[0]
         if sum(jidx) > 0:
-            partial_wj = projectToSimplexNewton(v[jidx]/eta[j])
+            partial_wj = projectToSimplexNewton(v[jidx] / eta[j])
             W[j, jidx] = partial_wj
         else:
-            W[j, :] = ones(n)/n
+            W[j, :] = ones(n) / n
     return W
 
 
@@ -826,7 +830,7 @@ def ts2WMixedColumns(L, ts, alpha, eta):
     nonAmbPos = (1 - ambiguous).nonzero()[0]
 
     # Set W for the non-ambiguous set of points
-    W[idxes[nonAmbPos], nonAmbPos] = etavi[nonAmbPos ] * v[nonAmbPos]
+    W[idxes[nonAmbPos], nonAmbPos] = etavi[nonAmbPos] * v[nonAmbPos]
     if ambiguous.any():
         # Below red stands for "reduced", corresponding to the ambiguous columns/points.
         redL = L[:, ambPos]
@@ -966,7 +970,7 @@ def heuristic2L2ToW(L, l2, alpha, fudge=1e-15):
 
 def dual1solve5(L, alpha, eta=None, fixedLowerBound=None, lambda2=None, maxIters=30, report=None):
     k, _ = L.shape
-    eta = eta if eta is not None else ones(k)/k
+    eta = eta if eta is not None else ones(k) / k
     tStream = dual1solve5Stream(L, alpha, eta=eta, fixedLowerBound=fixedLowerBound, lambda2=lambda2)
 
     return reportAndBoundStream(tStream,
@@ -994,21 +998,24 @@ def dual1solve5Stream(L, alpha, eta=None, fixedLowerBound=None, lambda2=None):
 
 def lowDimSGDStream(L, alpha, eta, subsamplingFactor, radius, ts0=None):
     k, n = L.shape
-    sampleSize = ceil(subsamplingFactor*n)
+    sampleSize = ceil(subsamplingFactor * n)
     ts0 = randn(k) if ts0 is None else ts0
+
     def sGOfTGrad(t):
         return -gOfTGrad(subset(L, sampleSize),
                          alpha * sampleSize / n,
                          t, eta)
+
     def emptyProj(t):
         return t
 
-    oneOverN = (radius*50./(i+50) for i in count(1))
-    oneOverSqrtN = (radius*10./sqrt(i+100) for i in count(1))
+    oneOverN = (radius * 50. / (i + 50) for i in count(1))
+    oneOverSqrtN = (radius * 10. / sqrt(i + 100) for i in count(1))
 
     unregProx = lambda g, C: -g / C
     return sgdStream(repeat(sGOfTGrad), ts0, oneOverN)
     #    return regularizedDualAveragingStream(repeat(sGOfTGrad), unregProx, ts0, lip, gamma)
+
 #projectedSubgradientStream(sGOfTGrad, emptyProj, ts0, theta=sqrt(k)*(L.max()-L.min()))
 
 
@@ -1028,6 +1035,7 @@ def lowDimSolveStream(L, alpha, eta, fixedLowerBound=None, ts0=None):
         ts = tStream.send(None) # primal lower bounds are generally very loose.
         #ts = tStream.send(nextLowerBound)
 
+
 def lowDimCoordinateMinimizationStream(L, alpha, ts0=None):
     k, _ = L.shape
     ts0 = randn(k) if ts0 is None else ts0
@@ -1042,9 +1050,10 @@ def lowDimCoordinateMinimizationStream(L, alpha, ts0=None):
             def f(tj):
                 tst[j] = tj
                 return -gOfTs(L, alpha, tst)
+
             ts[j] = fminbound(f, -b, b, xtol=1e-10)
             ts = ts - ts.mean()
-            b = 2*abs(ts).max()
+            b = 2 * abs(ts).max()
             yield ts
 
 
@@ -1059,16 +1068,18 @@ def lowDimCoordinateMinimizationStream2(L, alpha, ts0=None):
     while True:
         #j = sumWeightsFor(alpha, L,ts).argmin()
         #j = randint(k)
-        j = ((sumWeightsFor(alpha, L,ts)-1)**2).argmax()
+        j = ((sumWeightsFor(alpha, L, ts) - 1) ** 2).argmax()
+
         def f(tj):
-            return sumWeightLoss(alpha, L, ts+tj*modvecs[j], j)
-        ts += modvecs[j]*fminbound(f,-b,b,xtol=1e-5)
+            return sumWeightLoss(alpha, L, ts + tj * modvecs[j], j)
+
+        ts += modvecs[j] * fminbound(f, -b, b, xtol=1e-5)
         ts = ts - ts.mean()
         #print "ts %s, j %s" % (ts,j)
         #print "sums: %s" % sumWeightsFor(alpha, L, ts)
         #if abs(sumWeightsFor(alpha, L, ts)[j] - 1) > 0.01:
         #    pdb.set_trace()
-        b = 2*abs(ts).max()
+        b = 2 * abs(ts).max()
         yield ts
 
 
@@ -1082,23 +1093,24 @@ def lowDimCoordinateMinimizationStream3(L, alpha, ts0=None):
 
     modvecs = modVecs(k)
     while True:
-        j = ((sumWeightsFor(alpha, L,ts)-1)**2).argmax()
+        j = ((sumWeightsFor(alpha, L, ts) - 1) ** 2).argmax()
 
         def f(tj):
-            return sumWeightLoss(alpha, L, ts+tj*modvecs[j], j)
-        ts += modvecs[j]*fminbound(f,-b,b,xtol=1e-5)
+            return sumWeightLoss(alpha, L, ts + tj * modvecs[j], j)
+
+        ts += modvecs[j] * fminbound(f, -b, b, xtol=1e-5)
         ts = ts - ts.mean()
-        print "ts %s, j %s" % (ts,j)
+        print "ts %s, j %s" % (ts, j)
         print "sums: %s" % sumWeightsFor(alpha, L, ts)
         #if abs(sumWeightsFor(alpha, L, ts)[j] - 1) > 0.01:
         #    pdb.set_trace()
-        b = 2*abs(ts).max()
+        b = 2 * abs(ts).max()
         yield ts
 
 
 def modVecs(k):
     kt = float(k)
-    return diag(ones(kt)*(kt/(kt-1))) - ones((kt,kt))/(kt-1)
+    return diag(ones(kt) * (kt / (kt - 1))) - ones((kt, kt)) / (kt - 1)
 
 
 def weightsFor(alpha, L, ts, a):
@@ -1108,25 +1120,24 @@ def weightsFor(alpha, L, ts, a):
     zn = zeros(n)
     W = zeros_like(L)
     for j in range(k):
-        W[j,idxes==j] = k*(arr[j,idxes==j]/2/alpha+a)
-        W[j,:] = vstack((W[j,:],zn)).max(0)
+        W[j, idxes == j] = k * (arr[j, idxes == j] / 2 / alpha + a)
+        W[j, :] = vstack((W[j, :], zn)).max(0)
     return W
 
 
-def sumWeightsFor(alpha, L,ts):
+def sumWeightsFor(alpha, L, ts):
     a = aForTs(alpha, L, ts)
     return weightsFor(alpha, L, ts, a).sum(1)
 
 
 def sumWeightLoss(alpha, L, ts, j):
-    return (sumWeightsFor(alpha, L,ts)[j] - 1) ** 2
+    return (sumWeightsFor(alpha, L, ts)[j] - 1) ** 2
 
 
 def aForTs(alpha, L, ts):
     lambda2 = lambda2FromTs(L, ts)
     v = vmin(alpha, lambda2)
-    return median(v-lambda2/(2*alpha))
-
+    return median(v - lambda2 / (2 * alpha))
 
 
 def dualPrimalCoordinateWise(L, alpha, eta, ts0=None):
