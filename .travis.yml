@@ -12,7 +12,7 @@ before_install:
 install:
   - conda install --yes python=$TRAVIS_PYTHON_VERSION atlas numpy scipy matplotlib nose dateutil pandas statsmodels cython
   - pip install scikit-learn
-  - pip install cvxopt --user
+  - pip install cvxopt
   #- "pip install -r requirements.txt"
 
 before_script: "cd src; python setup.py build_ext --inplace"
