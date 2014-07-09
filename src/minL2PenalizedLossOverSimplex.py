@@ -18,6 +18,7 @@ from utility import projectToSimplexNewton, nonNegativePart, ei, oneSidedBinaryS
 from cvxoptJointWeightsOptimization import optimalWeightsMultipleModelsFixedProfile, dual1prox2
 from lambdaAndWinnersCache import LambdaAndWinnersTree
 
+# noinspection PyUnresolvedReferences
 from optimized_rw_core import lambdaAndWinners
 
 
@@ -45,7 +46,8 @@ def weightsForMultipleLosses2(L, alpha, maxIters=100, report=nop):
 
 
 def weightsCombinedConsistent(L, alpha, eta, ts0=None, maxIters=1000, report=nop):
-    return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W, weightsForMultipleLosses2FISTAStream, ts0=ts0,
+    return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W,
+                           weightsForMultipleLosses2FISTAStream, ts0=ts0,
                            max_iters=maxIters, relative_duality_gap=1e-9,
                            report=report)
 
