@@ -1,15 +1,31 @@
-from numpy import array, inf, ones
+from numpy import array, inf, ones, zeros
 
 from sklearn.svm import SVC
-from sklearn.metrics import zero_one_score
+#from sklearn.metrics import zero_one_score
 
 import alternatingAlgorithms as aa
 import weightedModelTypes as wmt
-from minL2PenalizedLossOverSimplex import penalizedMultipleWeightedLoss2, weightsForLosses
+from minL2PenalizedLossOverSimplex import penalizedMultipleWeightedLoss2, weightsForLosses, weightsCombinedForAM
 
 #from exploreSvm import hinge_losses
 #from svmutil import svm_train, svm_problem, svm_predict
 #from svm import svm_parameter, SVC
+
+
+def optimize(data, model_class, alpha, eta, model_parameters=None,
+             dual_optimizer='coordinate-wise', dual_to_primal='partition',
+             primal_optimizer='fista'):
+
+    k = eta.shape[0]
+    L = model_class.randomModelLosses(data, k, modelParameters=model_parameters)
+    _, n = L.shape
+    t = zeros(k)
+    W = ones((k, n)) / n
+    for i in range(10):
+        W, t = weightsCombinedForAM(L, alpha, eta, ts0=t, W0=W) # solve for weights and t, with a relative duality gap or iteration complexity based stopping rules
+        states = [model_class(data, w, model_parameters) for w in W]
+        L = array([s.squaredLosses() for s in states])
+    return states, t
 
 
 def clustering(X, k, alpha, n_init=10):
@@ -18,8 +34,10 @@ def clustering(X, k, alpha, n_init=10):
     """
     minJointLoss = inf
     for i in xrange(n_init):
-        initialStates = aa.jointlyPenalizedInitialStates(X.T, wmt.ClusteringState, alpha, k, dualityGapGoal=1e-5)
-        finalStates = aa.learnJointlyPenalizedMultipleModels(initialStates, alpha, maxSteps=100, dualityGapGoal=1e-2)
+        #initialStates = aa.jointlyPenalizedInitialStates(X.T, wmt.ClusteringState, alpha, k, dualityGapGoal=1e-5)
+        #finalStates = aa.learnJointlyPenalizedMultipleModels(initialStates, alpha, maxSteps=100, dualityGapGoal=1e-2)
+        eta = ones(k) / k
+        finalStates, t = optimize(X.T, wmt.ClusteringState, alpha, eta)
         centroids = [s.center for s in finalStates]
         W = array([s.weights for s in finalStates])
         L = array([s.squaredLosses() for s in finalStates])

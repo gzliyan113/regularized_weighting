@@ -45,6 +45,13 @@ def weightsForMultipleLosses2(L, alpha, maxIters=100, report=nop):
     return weightsForMultipleLosses2DualPrimal(L, alpha, report=report)
 
 
+def weightsCombinedForAM(L, alpha, eta, ts0=None, W0=None, maxIters=None, report=nop):
+    return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W,
+                           weightsForMultipleLosses2FISTAStream, ts0=ts0, W0=W0,
+                           max_iters=maxIters, relative_duality_gap=1e-2,
+                           report=report)
+
+
 def weightsCombinedConsistent(L, alpha, eta, ts0=None, maxIters=1000, report=nop):
     return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W,
                            weightsForMultipleLosses2FISTAStream, ts0=ts0,
@@ -61,13 +68,15 @@ def weightsCombined(L, alpha, eta, ratio, ts_stream_maker, to_primal,
      candidates.
     """
     k, n = L.shape
+    ts = ts0 if ts0 is not None else zeros(k)
     W = W0 if W0 is not None else ones((k, n)) / n
-    primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
     primStr = primal_stream_maker(L, alpha, eta, W)
+    W = primStr.next()
+    primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
 
     # Enough iterations for FISTA to converge from the default W.
     max_iters = max_iters if max_iters is not None else (
-        k * alpha / n / (primal_value * relative_duality_gap))
+        int(ceil(k * sqrt(alpha / n / (primal_value * relative_duality_gap)))))
 
     primalTime = .0
     dualTime = .0
@@ -76,6 +85,7 @@ def weightsCombined(L, alpha, eta, ratio, ts_stream_maker, to_primal,
 
     dualTime, ts = timedNext(dualTime, tsStr)
     dual_value = gOfTs(L, alpha, ts, eta)
+    init_gap = primal_value - dual_value
     doPrimal = True
     ts = tsStr.next()
     Wc = to_primal(L, ts, alpha, eta)
@@ -98,10 +108,12 @@ def weightsCombined(L, alpha, eta, ratio, ts_stream_maker, to_primal,
                 primal_c_value = penalizedMultipleWeightedLoss2(L, Wc, alpha, eta=eta)
                 if primal_value > primal_c_value:
                     W = Wc
-                    primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
+                    primal_value = primal_c_value
                     primStr = primal_stream_maker(L, alpha, eta, W)
-
-        if dual_value > primal_value * (1 - relative_duality_gap):
+        gap = primal_value - dual_value
+        if (gap < primal_value * relative_duality_gap) and (gap < init_gap * 0.9):
+            print("Stopping: primal: %f, dual: %f, max_rel_gap: %f, gap: %f, iteration= %i out of potential: %i" %
+                  (primal_value, dual_value, relative_duality_gap, gap, i, max_iters))
             break
     return W, ts
 
