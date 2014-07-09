@@ -1,10 +1,9 @@
 from numpy.random import rand, randn, randint
 from numpy import cumsum, ceil, array, repeat, zeros, tile, linspace
-
-d = 10
-k = 10
-n = 1000
-
+from math import sqrt
+import simpleInterface as si
+from sklearn.metrics import adjusted_mutual_info_score
+from sklearn.cluster import k_means
 
 def make_clustered_points(dim, num_clusters, num_points):
     """
@@ -19,7 +18,7 @@ def make_clustered_points(dim, num_clusters, num_points):
     2
     """
     # Noise, before scaling.
-    X = randn(dim, num_points)
+    X = randn(dim, num_points) / sqrt(d)
 
     # Assign noise multipliers
     magnitude = array(randint(100, size=num_points))
@@ -30,7 +29,7 @@ def make_clustered_points(dim, num_clusters, num_points):
     X[:, medium] *= 2.
     X[:, large] *= 10.
 
-    centers = randn(dim, num_clusters)
+    centers = randn(dim, num_clusters) / sqrt(d)
 
     # Decide class sizes
     #idxes = cumsum(rand(k))
@@ -50,6 +49,16 @@ def make_clustered_points(dim, num_clusters, num_points):
     return X, labels, centers
 
 if __name__ == "__main__":
-    import simpleInterface as si
-    X, _, _ = make_clustered_points(d, k, n)
-    centers, labels = si.clustering(X.T, k, 100*n, n_init=1)
+    d = 10
+    k = 100
+    n = 10000
+    alpha = 1.*n
+
+    X, gt_labels, gt_centers = make_clustered_points(d, k, n)
+    print("Benchmarking clustering with d=%i, k=%i, n=%i, alpha=%f" %
+          (d, k, n, alpha))
+    centers, labels = si.clustering(X.T, k, alpha, n_init=10)
+    km_centers, km_labels, _ = k_means(X.T, k)
+
+    print(adjusted_mutual_info_score(gt_labels, labels))
+    print(adjusted_mutual_info_score(gt_labels, km_labels))
