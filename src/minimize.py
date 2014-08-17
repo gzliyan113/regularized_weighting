@@ -119,6 +119,7 @@ def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
     xk = x0
     yk = x0
     tk = 1
+    yield xk
 
     def F(x):
         return f(x) + g(x)
@@ -135,14 +136,16 @@ def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
     '''Non standard extension: expanding line search to find an initial estimate of Lipschitz constant'''
     for k in range(5):
         pyk = P(Lipk, yk)
-        if F(pyk) > Q(Lipk, pyk, yk):
+        Fpyk = F(pyk)
+        if Fpyk > Q(Lipk, pyk, yk):
             break
-        yield pyk
+        if Fpyk < Fxko:
+            yield pyk
         Lipk /= eta ** 4
     '''Start standard algorithm'''
-    while True:
-        yield xk
+    xk = pyk
 
+    while True:
         while True:
             pyk = P(Lipk, yk)
             Fyk = F(pyk)
@@ -162,6 +165,7 @@ def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
         Fxko = Fxk
         xko = xk
         tk = tkn
+        yield xk
 
 def projectedSubgradientStream(sgf, proj, x0, theta=1.):
     """ Minimize a function f whose subgradient is sgf over
