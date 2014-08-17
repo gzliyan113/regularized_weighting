@@ -18,7 +18,7 @@ def make_clustered_points(dim, num_clusters, num_points):
     2
     """
     # Noise, before scaling.
-    X = randn(dim, num_points) / sqrt(d)
+    X = randn(dim, num_points) / sqrt(dim)
 
     # Assign noise multipliers
     magnitude = array(randint(100, size=num_points))
@@ -27,9 +27,9 @@ def make_clustered_points(dim, num_clusters, num_points):
     large = array([m in range(99, 100) for m in magnitude])
     X[:, small] *= 0.1
     X[:, medium] *= 2.
-    X[:, large] *= 10.
+    X[:, large] *= 100.
 
-    centers = randn(dim, num_clusters) / sqrt(d)
+    centers = randn(dim, num_clusters) / sqrt(dim)
 
     # Decide class sizes
     #idxes = cumsum(rand(k))
@@ -49,16 +49,17 @@ def make_clustered_points(dim, num_clusters, num_points):
     return X, labels, centers
 
 if __name__ == "__main__":
-    d = 10
+    d = 100
     k = 100
-    n = 10000
+    n = 100000
     alpha = 1.*n
 
     X, gt_labels, gt_centers = make_clustered_points(d, k, n)
     print("Benchmarking clustering with d=%i, k=%i, n=%i, alpha=%f" %
           (d, k, n, alpha))
-    centers, labels = si.clustering(X.T, k, alpha, n_init=10)
-    km_centers, km_labels, _ = k_means(X.T, k)
+    centers, labels = si.clustering(X.T, k, alpha, n_init=1)
+    km_centers, km_labels, _ = k_means(X.T, k, n_init=1)
 
     print(adjusted_mutual_info_score(gt_labels, labels))
     print(adjusted_mutual_info_score(gt_labels, km_labels))
+
