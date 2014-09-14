@@ -127,37 +127,52 @@ def fastGradientProjectionStream(f, g, gradf, proxg, x0, initLip=None):
     Fxko = F(xko)
 
     def Q(Lip, px, x):
+        """Value at px, where smooth part is approximated quadratically around x"""
         d = (px - x).flatten() # treat all matrices as vectors
         return f(x) + gradf(x).flatten().dot(d) + Lip * (norm(d) ** 2) / 2 + g(px)
 
     def P(Lip, x):
+        """Gradient step and projection"""
         return proxg(Lip, x - gradf(x) / Lip)
 
     '''Non standard extension: expanding line search to find an initial estimate of Lipschitz constant'''
-    for k in range(5):
+    for k in range(10):
         pyk = P(Lipk, yk)
         Fpyk = F(pyk)
-        if Fpyk > Q(Lipk, pyk, yk):
+        Qpykyk = Q(Lipk, pyk, yk)
+        #print "Fpyk = %s; Q(%s ** -1...) = %s" % (Fpyk, Lipk ** -1, Qpykyk)
+        if Fpyk > Qpykyk:
+            #print "stop increase"
             break
         if Fpyk < Fxko:
             yield pyk
+            yk = pyk
         Lipk /= eta ** 4
+        #print "increased step size to %s" % Lipk ** -1
+    '''Step size now must be too large, decrease at least one step.'''
+    Lipk *= eta
+
     '''Start standard algorithm'''
     xk = pyk
 
     while True:
+        '''Decrease step size until approximation is valid.'''
         while True:
             pyk = P(Lipk, yk)
-            Fyk = F(pyk)
-            if Fyk <= Q(Lipk, pyk, yk):
+            Fpyk = F(pyk)
+            Qpykyk = Q(Lipk, pyk, yk)
+            #print "Fpyk = %s; Q(%s ** -1...) = %s" % (Fpyk, Lipk ** -1, Qpykyk)
+            if Fpyk <= Qpykyk:
+                #print "stop step size decrease"
                 break
             Lipk *= eta
+            #print "decreased step size to %s" % Lipk ** -1
 
         zk = pyk
         tkn = (1 + sqrt(1 + 4 * (tk ** 2))) / 2
-        if Fyk <= Fxko: # Fyk is F(zk)=F(pyk); Fxko is F(xko)
+        if Fpyk <= Fxko: # Fpyk is F(zk)=F(pyk); Fxko is F(xko)
             xk = zk
-            Fxk = Fyk
+            Fxk = Fpyk
         else:
             xk = xko
             Fxk = Fxko
