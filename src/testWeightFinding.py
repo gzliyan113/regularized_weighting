@@ -30,7 +30,7 @@ def testDualThenLinearBounds():
     L = rand(k, n)
     alpha = 3 * n
     eta = random_eta(k)
-    l2 = dual1solve5(L, alpha, eta=eta, maxIters=1000)
+    l2 = dual1solve5(L, alpha, eta=eta, maxIters=100)
     dualLowerBound = dual1value(L, alpha, eta, l2)
     WOTS = optimalWeightsMultipleModels2(L, alpha, eta=eta)
     primalUpperBoundPrecise = penalizedMultipleWeightedLoss2(L, WOTS, alpha, eta=eta)
