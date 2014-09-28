@@ -1,5 +1,6 @@
 import numpy as np
 cimport numpy as np
+cimport cython
 
 ctypedef np.double_t DTYPE_t
 ctypedef np.intp_t ITYPE_t
@@ -27,7 +28,39 @@ def lambdaAndWinners2(L, ts):
 
     return maxes, idxes
 
-cimport cython
+
+@cython.boundscheck(False)
+def make_positive(np.ndarray[DTYPE_t, ndim=1] v):
+    cdef int n
+    cdef int i
+    cdef DTYPE_t di
+    n = v.shape[0]
+    for i in range(n):
+        di = v[i]
+        if di < 0.:
+            v[i] = 0
+    n = 0
+
+
+@cython.boundscheck(False)
+def projCore(np.ndarray[DTYPE_t, ndim=1] v, DTYPE_t a):
+    cdef int n
+    cdef int i
+    cdef int nnc
+    cdef DTYPE_t di
+    cdef DTYPE_t nns
+    n = v.shape[0]
+    nns = 0.
+    nnc = 0
+    for i in range(n):
+        # diff = v - a
+        di = v[i] - a
+        if di >= 0.:
+            nns += di
+            nnc += 1
+    return nnc, nns
+
+
 @cython.boundscheck(False)
 def lambdaAndWinners(L, np.ndarray[DTYPE_t, ndim=1] ts):
     cdef np.ndarray[DTYPE_t, ndim=2] Lb = L

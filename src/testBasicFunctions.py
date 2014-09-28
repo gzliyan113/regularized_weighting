@@ -1,8 +1,8 @@
 from numpy.random import randn
-from numpy import diff, allclose
+from numpy import diff, allclose, zeros
 from testUtilities import random_eta
 from minL2PenalizedLossOverSimplex import weightsForMultipleLosses2BlockMinimization, penalizedMultipleWeightedLoss2, penalizedMultipleWeightedLoss2Gradient, gOfTs, gOfTGrad
-from utility import functionGradient
+from utility import functionGradient, projectToSimplex, projectToSimplexNewton
 
 k = 3
 n = 30
@@ -46,3 +46,12 @@ def testHGradient():
     # could still fail at points of non-differentiability
     assert allclose(dgAppx, dg, 10e-5)
 
+
+def testProj():
+    v = randn(100)
+    vt = v.copy()
+    a = zeros(100)
+    assert allclose(projectToSimplex(v), projectToSimplexNewton(v))
+    projectToSimplexNewton(v, into=a)
+    assert allclose(projectToSimplex(v), a)
+    assert allclose(v, vt)

@@ -3,12 +3,16 @@ import pdb
 import scipy
 import numpy
 from numpy.linalg import det, inv, norm
-from numpy import log, trace, dot, zeros, array, arange, inf, size, pi, e, sqrt, diag, max, vstack, min, sum, meshgrid, linspace, ceil
+from numpy import log, trace, dot, zeros, array, arange, inf, size, pi, e, sqrt, diag, max, vstack, min, sum, meshgrid, linspace, ceil, sort
 from numpy.random import permutation
 from scipy.misc import derivative
 import numpy as np
 from itertools import count, izip, islice
+from numpy.core.multiarray import count_nonzero
 from minimize import fastGradientProjectionStream
+
+# noinspection PyUnresolvedReferences
+from optimized_rw_core import projCore, make_positive
 
 
 def nop(*a, **kwa):
@@ -103,7 +107,7 @@ def subgradientPolyakCFM(f, sgf, x0, lowerBounder, gamma=1, maxIters=100, report
     return xk
 
 
-def projectToSimplexNewton(v, target=1.):
+def projectToSimplexNewtonReference(v, target=1.):
     """ The orthogonal projection of v into the simplex is of form sum(nonNegativePart(v-a)) for some a. The function a->sum(nonNegativePart(v-a)) is decreasing and convex.
     Then we can use a newton's iteration, non-smoothness notwithstanding. """
     a = min(v) - target
@@ -111,12 +115,50 @@ def projectToSimplexNewton(v, target=1.):
 
     while f > 10 ** -8:
         diff = v - a
-        f = nonNegativePart(diff).sum() - target
-        df = (1.0 * (diff > 0)).sum()
-        #print((a, f, df))
+        nn = nonNegativePart(diff)
+        nnc = count_nonzero(nn)
+        nns = nn.sum()
+        f = nns - target
+        df = nnc #(1.0 * (diff > 0)).sum()
         a = a + f / (df + 1e-6)
 
     return nonNegativePart(v - a)
+
+
+def projectToSimplexNewton(v, target=1., into=None):
+    """ The orthogonal projection of v into the simplex is of form sum(nonNegativePart(v-a)) for some a. The function a->sum(nonNegativePart(v-a)) is decreasing and convex.
+    Then we can use a newton's iteration, non-smoothness notwithstanding. """
+    a = v.min() - target
+    nnc, nns = projCore(v, a)
+    f = nns - target
+    #f = sum(nonNegativePart(v - a)) - target
+    r = 0
+
+    while f > 10 ** -8:
+        r += 1
+        if r > 100:
+            print ("f: %s, nnc = %s, nns = %s, a = %s" % (f, nnc, nns, a))
+            #pdb.set_trace()
+        if r > 120:
+            raise(Exception("120 iterations for a projection is plenty. f: %s, nnc = %s, nns = %s, a = %.50g" % (f, nnc, nns, a)))
+        #print("."),
+        nnc, nns = projCore(v, a)
+        f = nns - target
+        df = nnc #(1.0 * (diff > 0)).sum()
+        if df == 0:
+            raise(Exception("df should never be 0. f: %s, nnc = %s, nns = %s, a = %s" % (f, nnc, nns, a)))
+        if a + (f / df) == a:
+            break
+        a = a + f / df
+    #print(" ")
+    if into is None:
+        pv = v - a
+        make_positive(pv)
+        return pv
+    else:
+        into[:] = v
+        into -= a
+        make_positive(into)
 
 
 def projectToSimplex(v):
