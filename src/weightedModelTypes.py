@@ -1,10 +1,10 @@
-from numpy import arange, array, sqrt, diag, ones, tile, dot, hstack, zeros, eye, log, pi, diag
-from numpy.linalg import lstsq, norm
+from numpy import arange, array, sqrt, ones, tile, dot, hstack, zeros, eye, log, pi, diag
+from numpy.linalg import lstsq
 from numpy.random import randn
 import random
 import numpy as np
 import utility
-import pdb
+
 
 def basisForDataBasedSubspace(data, subspaceDimension):
     U, _, _ = np.linalg.svd(data, full_matrices=False)
@@ -19,19 +19,19 @@ def basisForRandomSubspace(ambientDimension, subspaceDimension):
 
 class ScalarGaussianState:
     @staticmethod
-    def randomModelLosses(data, k, modelParameters=None):
-        # Start with a random point from dataset, with scalar covariance set so that n/k data points are reasonable.
+    def randomModelLosses(data, k, modelParameters):
+        # Start with a random point from data set, with scalar covariance set so that n/k data points are reasonable.
         d, n = data.shape
         means = data[:, random.sample(range(n), k)].T
-        L = zeros((k,n))
-        for j,m in enumerate(means):
+        L = zeros((k, n))
+        for j, m in enumerate(means):
             differences = (data.T - m).T
             squaredDistances = array(utility.squaredColNorm(differences))
             variance = np.percentile(squaredDistances, 100. / k)
-            L[j,:] = (d*log(pi*2*variance) + squaredDistances/variance)/2.
+            L[j, :] = (d * log(pi * 2 * variance) + squaredDistances / variance) / 2.
         return L
 
-    def __init__(self, theData, theWeights, modelParameters=None):
+    def __init__(self, theData, theWeights, modelParameters):
         self.data = theData
         self.weights = theWeights
         self.d, self.n = self.data.shape
@@ -42,10 +42,10 @@ class ScalarGaussianState:
         differences = (self.data.T - self.mean).T
         squaredDistances = array(utility.squaredColNorm(differences))
         self.variance = squaredDistances.dot(self.weights)
-        self.l = (self.d*log(pi*2*self.variance) + squaredDistances/self.variance)/2.
+        self.l = (self.d * log(pi * 2 * self.variance) + squaredDistances / self.variance) / 2.
 
     def nextState(self, newWeights):
-        return ScalarGaussianState(self.data, newWeights)
+        return ScalarGaussianState(self.data, newWeights, None)
 
     def squaredLosses(self):
         return self.l
@@ -54,14 +54,13 @@ class ScalarGaussianState:
         return diag(self.weights).dot(self.squaredLosses())
 
 
-
 class MultiPCAState:
     @staticmethod
     def randomModelLosses(data, k, modelParameters):
         d = modelParameters['d']
         n, numPoints = data.shape
         L = array([utility.squaredColNorm(basisForRandomSubspace(n, n - d).T.dot(data))
-                   for i in arange(k)])
+                   for _ in arange(k)])
         return L
 
     def __init__(self, theData, theWeights, modelParameters):
@@ -99,7 +98,6 @@ class MultiPCAState:
 class MultiLinearRegressionState:
     @classmethod
     def randomModelLosses(cls, data, k, modelParameters):
-        regularizationStrength = modelParameters['regularizationStrength']
         (X, Y) = data
         n, numPoints = X.shape
         return array([cls.givenModelLosses(X, Y, randn(n)) for _ in arange(k)])
@@ -138,12 +136,12 @@ class MultiLinearRegressionState:
 
 
 def squaredLossOfLinearFunctional(X, Y, r):
-    return (self.r.dot(X) - Y) ** 2
+    return (r.dot(X) - Y) ** 2
 
 
 def quadraticKernelMapping(X, weights=None):
-    ''' Kernel mapping: x -> (xx^T,x,1).
-    Assumes the iterator over x gives a data point each time. '''
+    """ Kernel mapping: x -> (xx^T,x,1).
+    Assumes the iterator over x gives a data point each time. """
     weights = weights if weights is not None else ones(len(X))
     return array([np.hstack((np.outer(x, x).flatten() * (w ** 0.5),
                              x.flatten() * (w ** 0.5),
@@ -157,22 +155,22 @@ def applyQuadratic(X, c):
 
 class ClusteringState:
     @staticmethod
-    def randomModelLosses(data, k, modelParameters=None):
+    def randomModelLosses(data, k, modelParameters):
         d, n = data.shape
         centers = data[:, random.sample(range(n), k)]
         L = zeros((k, n))
         for j in range(k):
-            L[j, :] = utility.squaredColNorm(data - centers[:,j].reshape((d, 1)))
+            L[j, :] = utility.squaredColNorm(data - centers[:, j].reshape((d, 1)))
         return L
 
-    def __init__(self, data, theWeights, parameters=None):
+    def __init__(self, data, theWeights, modelParameters):
         self.data = data
         self.n, self.q = data.shape
         self.weights = theWeights
         self.center = self.data.dot(self.weights.T)
 
     def nextState(self, newWeights):
-        return ClusteringState(self.data, newWeights)
+        return ClusteringState(self.data, newWeights, None)
 
         # distances from solution
 
@@ -185,7 +183,7 @@ class ClusteringState:
 
 class MultiQuadraticRegressionState:
     @staticmethod
-    def randomModelLosses(data, k, modelParameters=None):
+    def randomModelLosses(data, k, modelParameters):
         dataX, dataY = data
 
         n, numPoints = dataX.shape
@@ -196,9 +194,8 @@ class MultiQuadraticRegressionState:
                    for c in randModelCoeffs])
         return L
 
-
-    def __init__(self, data, theWeights, parameters=None):
-        "No parameters are expected or used"
+    def __init__(self, data, theWeights, modelParameters):
+        """No parameters are expected or used"""
         (theDataX, theDataY) = data
         self.dataX = theDataX
         self.dataY = theDataY
@@ -213,7 +210,7 @@ class MultiQuadraticRegressionState:
         (self.r, _, _, _) = lstsq(self.z, self.dataY * sqrt(self.weights))
 
     def nextState(self, newWeights):
-        return MultiQuadraticRegressionState((self.dataX, self.dataY), newWeights)
+        return MultiQuadraticRegressionState((self.dataX, self.dataY), newWeights, None)
 
         # distances from solution
 
