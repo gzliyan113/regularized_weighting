@@ -1,9 +1,9 @@
 import time
 from numpy.random import rand
-from numpy import ones, array, cumsum, nan, isnan, zeros, zeros_like, ceil, median, abs, sqrt
+from numpy import ones, array, cumsum, nan, isnan, zeros, zeros_like, ceil, median, abs, sqrt, inf
 import pdb
 
-from matplotlib.pyplot import semilogy, show, legend, xlabel, ylabel, title
+from matplotlib.pyplot import semilogy, show, legend, xlabel, ylabel, title, plot
 from pandas import Series, DataFrame
 from minimize import averageLateWeightingStream
 from utility import projectToSimplexNewton, subset, reportAndBoundStream
@@ -31,9 +31,10 @@ def validateScoreWeights(alpha, L, W, eta):
         return 10e20
     return mp.penalizedMultipleWeightedLoss2(L, W, alpha, eta)
 
-#@profile
-def recordIntermediateLosses(func, params, L, alpha, eta):
+
+def recordIntermediateLosses(func, params, L, alpha, eta, max_time=inf):
     seq = []
+
     def rep(id, W, lambda2, ts):
         t = time.time()
         seq.append((id, t, validateScoreWeights(alpha, L, W, eta), lambda2, ts))
@@ -67,14 +68,14 @@ def makePrimalToFullWrapper(func):
 
 
 def makeDualTsToFullWrapper(func):
-    def dualTsWrapper(L, alpha, report=None, **params):
-        func(L, alpha, report=lambda ts, k: report(k, None, None, ts), **params)
+    def dualTsWrapper(L, alpha, eta, report=None, **params):
+        func(L, alpha, eta, report=lambda ts, k: report(k, None, None, ts), **params)
 
     return dualTsWrapper
 
 
 def makeDualLambdasToFullWrapper(func):
-    def dualLambdasWrapper(L, alpha, report=None, **params):
+    def dualLambdasWrapper(L, alpha, eta, report=None, **params):
         func(L, alpha, report=lambda l2, k: report(k, None, l2, None), **params)
 
     return dualLambdasWrapper
@@ -319,79 +320,137 @@ def asRange(a, b):
     return min(a, b), max(a, b)
 
 
+def random_problem(k, n):
+    L = rand(k, n)
+    alpha = 5.*n
+    eta = ones(k) / k + rand(k)
+    eta = eta / eta.sum()
+    return alpha, eta, L
 
-k = 2
-q = 10000
 
-L = rand(k, q)
-alpha = 5.*q
-eta = ones(k) / k + rand(k)
-eta = eta / eta.sum()
-'''
-q=1000
-seedUsed, L, data = qbench.twoQuadraticsOnLineFatTailedNoiseCreateDataAndRandomModelLosses(q,1)
-k,q = L.shape
-alpha = median(L) * q
-'''
+def measure_primal(alpha, eta, L, maxIters):
+    k, q = L.shape
+    wrappedFista = makePrimalToFullWrapper(mp.weightsForMultipleLosses2FISTA)
+    algSpec = [(wrappedFista, 'FISTA baseline.', {'maxIters': maxIters})]
 
-print('Initialized data: k,q,alpha=%s,%s,%s' % (k,q,alpha))
+    tpd, descs = zip(*[(recordIntermediateLosses(alg, p, L, alpha, eta), desc) for alg, desc, p in algSpec])
+    times, primals, duals = zip(*tpd)
+    return times, primals
 
-wrappedFista = makePrimalToFullWrapper(mp.weightsForMultipleLosses2FISTA)
-#stdp = {'maxIters': 50, 'ts': rand(k)}
-#longp = {'maxIters': 200, 'ts': rand(k)}
-stdp = {'maxIters': 6}
-longp = {'maxIters': 100}
-algSpec = [
-    # (dual5ThenCheaperLinear, 'iterations of dual5 then linear via kxk conversion.', stdp),
-    #(mp.weightsForMultipleLosses2DualPrimal, 'dual-primal via kxk conversion.', longp),
-    #(mp.weightsForMultipleLosses2DualPrimal3c, 'new dual-primal via t-L conversion, with cache.', stdp),
-    #(mp.weightsForMultipleLosses2DualPrimal2, 'dual-primal via cutting plane w. t-L partition conversion.', longp),
-    (mp.dualPrimalCoordinateWise, 'dual-primal via coord-wise w. t-L partition conversion.', longp),
-    (mp.weightsCombinedConsistent, 'combined', longp),
-    #(mp.dualPrimalFastAndExperimental, 'dual-primal cutting and ts2W2 convert.', longp),
-    (mp.dualPrimalFastAndImprecise, 'dual-primal cutting and ts2W convert.', longp),
-    #(mp.dualPrimalSlowAndSafe, 'dual-primal cutting and OTS convert.', longp),
-    #(mp.dualPrimalSlowAndScalable, 'dual-primal cutting and t-L+FISTA convert.', longp),
-    #(mp.weightsForMultipleLosses2DualPrimal3, 'new dual-primal via t-L conversion.', stdp),
-    #(mp.weightsForMultipleLosses2DualPrimal4, 'dual-primal via changed support correction.', stdp),
-#    (mp.weightsForMultipleLosses2DualPrimal5, 'dual-primal on CA + changed support correction.', stdp),
-#    (mp.weightsForMultipleLosses2DualPrimal6, 'dual-primal on C sum weight search + changed support correction.', stdp),
-    #(dual5ThenLinear, 'iterations of dual5 then linear.', stdp),
-#(noisyDualPrimal,'DualPrimal algorithm on 1/3rd of L.',stdp),
-    #(sgdDualPrimal,'sgd DualPrimal algorithm.',stdp),
-    #(sgdDualPrimal2,'sgd DualPrimal algorithm, with late averaging.',stdp),
-    (wrappedFista,'FISTA baseline.',stdp),
-    #(makeDualLambdasToFullWrapper(mp.dual1solve5), 'ProxCutPlane dual baseline.', stdp),
-#(makeDualTsToFullWrapper(mp.dual1solve2), 'FISTA on dual (because it sometimes works to a point).', stdp),
-    #(makePrimalToFullWrapper(mp.weightsForMultipleLosses2BlockMinimization), 'Blockwise minimization, round robins.', stdp),
-    #    (makePrimalToFullWrapper(guessesThenBlock), 'Guess1 then Blockwise', stdp),
-    #    (mp.primalDual, 'Primal-dual with fista optimization and prox-cutting-plane method.', longp),
 
-    #    (makePrimalToFullWrapper(mp.weightsForMultipleLosses2BlockMinimization), 'Blockwise minimization, with changing alpha, 100 round robins.', {'maxIters':300, 'startAlpha': alpha / 2.}),
-    #(mp.weightsForMultipleLosses2OldPrimalDual,
-    # 'Mixed primal dual (essentially gradient descent on each, where latter is non-smooth)', longp)
-]
+def measure_dual(alpha, eta, L, maxIters):
+    algSpec = [(makeDualTsToFullWrapper(mp.tsByCuttingPlanes), 'dual.', {'maxIters': maxIters})]
 
-tpd, descs = zip(*[(recordIntermediateLosses(alg, p, L, alpha, eta), desc) for alg, desc, p in algSpec])
-times, primals, duals = zip(*tpd)
+    tpd, descs = zip(*[(recordIntermediateLosses(alg, p, L, alpha, eta), desc) for alg, desc, p in algSpec])
+    times, primals, duals = zip(*tpd)
+    return times, duals
 
-primalFrame = DataFrame(dict(zip(descs, primals)))
-dualFrame = DataFrame(dict(zip(descs, duals)))
-minP = primalFrame.min().min()
-maxD = dualFrame.max().max()
-#minP = minP if not isnan(minP) else maxD
 
-for i, (l, tS, pS, dS) in enumerate(zip(descs, times, primals, duals)):
-    rgb = tuple(rand(3))
-    #lows, highs = zip(*[asRange(p-minP,maxD-d) for p,d in zip(pS,dS)])
-    #semilogy(cumsum(tS),lows,label=l,c=rgb,marker='o')
-    #semilogy(cumsum(tS),highs,c=rgb,marker='+')
-    if pS.notnull().any():
-        semilogy(cumsum(tS), pS - maxD, label=l+' (P)', c=rgb, marker='o')
-    if dS.notnull().any():
-        semilogy(cumsum(tS), minP - dS, label=l+' (D)', c=rgb, marker='+')
-legend()
-title('Weight finding @ (k=%d, n=%d, alpha=%.2f)' % (k, q, alpha))
-xlabel('Time in seconds')
-ylabel('Upper bound on sub optimality.')
-show()
+def run_primal_and_dual_and_dual_primal(alpha, eta, L, maxIters):
+    k, _ = L.shape
+    algSpec = [(makePrimalToFullWrapper(mp.weightsForMultipleLosses2FISTA), 'FISTA.', {'maxIters': maxIters * 4}),
+               (makeDualTsToFullWrapper(mp.tsByCuttingPlanes), 'Cutting planes.', {'maxIters': maxIters * 5}),
+               (mp.weightsCombinedConsistent, 'Cut. planes, disj. conversion, FISTA.', {'maxIters': maxIters})]
+
+    tpd, descs = zip(*[(recordIntermediateLosses(alg, p, L, alpha, eta), desc) for alg, desc, p in algSpec])
+    times, primals, duals = zip(*tpd)
+    return times, primals, duals, descs
+
+
+def plot_strategies(k, n, times, primals, duals, descs, stop_time):
+    for time, primal, dual, desc in zip(times, primals, duals, descs):
+        ts = cumsum(time)
+        mask = ts < stop_time
+        if primal.notnull().any():
+            plot(ts[mask], primal[mask], marker='+', label=desc+' primal')
+        if dual.notnull().any():
+            plot(ts[mask], dual[mask], marker='o', label=desc+' dual')
+
+    title('Weight finding @ (k=%d, n=%d, beta=%.2f)' % (k, n, alpha / n))
+    legend(loc='best')
+    xlabel('Time in seconds, stopped at %s' % stop_time)
+    show()
+
+
+def generic_experiment():
+    k = 100
+    q = 10000
+
+    L = rand(k, q)
+    alpha = 5.*q
+    eta = ones(k) / k + rand(k)
+    eta = eta / eta.sum()
+    '''
+    q=1000
+    seedUsed, L, data = qbench.twoQuadraticsOnLineFatTailedNoiseCreateDataAndRandomModelLosses(q,1)
+    k,q = L.shape
+    alpha = median(L) * q
+    '''
+
+    print('Initialized data: k,q,alpha=%s,%s,%s' % (k,q,alpha))
+
+    wrappedFista = makePrimalToFullWrapper(mp.weightsForMultipleLosses2FISTA)
+    #stdp = {'maxIters': 50, 'ts': rand(k)}
+    #longp = {'maxIters': 200, 'ts': rand(k)}
+    stdp = {'maxIters': 6}
+    longp = {'maxIters': 100}
+    algSpec = [
+        #(dual5ThenCheaperLinear, 'iterations of dual5 then linear via kxk conversion.', stdp),
+        #(mp.weightsForMultipleLosses2DualPrimal, 'dual-primal via kxk conversion.', longp),
+        #(mp.weightsForMultipleLosses2DualPrimal3c, 'new dual-primal via t-L conversion, with cache.', stdp),
+        #(mp.weightsForMultipleLosses2DualPrimal2, 'dual-primal via cutting plane w. t-L partition conversion.', longp),
+        #(mp.dualPrimalCoordinateWise, 'dual-primal via coord-wise w. t-L partition conversion.', longp),
+        (mp.weightsCombinedConsistent, 'combined cutting planes', longp),
+        #(mp.weightsCombinedConsistent2, 'combined cutting planes ts2W3', longp),
+        #(mp.weightsCombinedForAM, 'combined coord', longp),
+        #(mp.dualPrimalFastAndExperimental, 'dual-primal cutting and ts2W2 convert.', longp),
+        #(mp.dualPrimalFastAndImprecise, 'dual-primal cutting and ts2W convert.', longp),
+        #(mp.dualPrimalSlowAndSafe, 'dual-primal cutting and OTS convert.', longp),
+        #(mp.dualPrimalSlowAndScalable, 'dual-primal cutting and t-L+FISTA convert.', longp),
+        #(mp.weightsForMultipleLosses2DualPrimal3, 'new dual-primal via t-L conversion.', stdp),
+        #(mp.weightsForMultipleLosses2DualPrimal4, 'dual-primal via changed support correction.', stdp),
+    #    (mp.weightsForMultipleLosses2DualPrimal5, 'dual-primal on CA + changed support correction.', stdp),
+    #    (mp.weightsForMultipleLosses2DualPrimal6, 'dual-primal on C sum weight search + changed support correction.', stdp),
+        #(dual5ThenLinear, 'iterations of dual5 then linear.', stdp),
+    #(noisyDualPrimal,'DualPrimal algorithm on 1/3rd of L.',stdp),
+        #(sgdDualPrimal,'sgd DualPrimal algorithm.',stdp),
+        #(sgdDualPrimal2,'sgd DualPrimal algorithm, with late averaging.',stdp),
+        (wrappedFista,'FISTA baseline.',longp),
+        #(makeDualLambdasToFullWrapper(mp.dual1solve5), 'ProxCutPlane dual baseline.', stdp),
+    #(makeDualTsToFullWrapper(mp.dual1solve2), 'FISTA on dual (because it sometimes works to a point).', stdp),
+        #(makePrimalToFullWrapper(mp.weightsForMultipleLosses2BlockMinimization), 'Blockwise minimization, round robins.', stdp),
+        #    (makePrimalToFullWrapper(guessesThenBlock), 'Guess1 then Blockwise', stdp),
+        #    (mp.primalDual, 'Primal-dual with fista optimization and prox-cutting-plane method.', longp),
+
+        #    (makePrimalToFullWrapper(mp.weightsForMultipleLosses2BlockMinimization), 'Blockwise minimization, with changing alpha, 100 round robins.', {'maxIters':300, 'startAlpha': alpha / 2.}),
+        #(mp.weightsForMultipleLosses2OldPrimalDual,
+        # 'Mixed primal dual (essentially gradient descent on each, where latter is non-smooth)', longp)
+    ]
+
+    tpd, descs = zip(*[(recordIntermediateLosses(alg, p, L, alpha, eta), desc) for alg, desc, p in algSpec])
+    times, primals, duals = zip(*tpd)
+
+    primalFrame = DataFrame(dict(zip(descs, primals)))
+    dualFrame = DataFrame(dict(zip(descs, duals)))
+    minP = primalFrame.min().min()
+    maxD = dualFrame.max().max()
+    #minP = minP if not isnan(minP) else maxD
+
+    for i, (l, tS, pS, dS) in enumerate(zip(descs, times, primals, duals)):
+        rgb = tuple(rand(3))
+        #lows, highs = zip(*[asRange(p-minP,maxD-d) for p,d in zip(pS,dS)])
+        #semilogy(cumsum(tS),lows,label=l,c=rgb,marker='o')
+        #semilogy(cumsum(tS),highs,c=rgb,marker='+')
+        if pS.notnull().any():
+            semilogy(cumsum(tS), pS - maxD, label=l+' (P)', c=rgb, marker='o')
+        if dS.notnull().any():
+            semilogy(cumsum(tS), minP - dS, label=l+' (D)', c=rgb, marker='+')
+    legend()
+    title('Weight finding @ (k=%d, n=%d, alpha=%.2f)' % (k, q, alpha))
+    xlabel('Time in seconds')
+    ylabel('Upper bound on sub optimality.')
+    show()
+
+if __name__ == "__main__":
+    alpha, eta, L = random_problem(200, 10000)
+    times, primals = measure_dual(alpha, eta, L, 10)

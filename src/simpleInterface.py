@@ -1,11 +1,12 @@
 from numpy import array, inf, ones, zeros
-
+import matplotlib.pyplot as plt
 from sklearn.svm import SVC
 #from sklearn.metrics import zero_one_score
+import time
 
 import alternatingAlgorithms as aa
 import weightedModelTypes as wmt
-from minL2PenalizedLossOverSimplex import penalizedMultipleWeightedLoss2, weightsForLosses, weightsCombinedForAM
+from minL2PenalizedLossOverSimplex import penalizedMultipleWeightedLoss2, weightsForLosses, weightsCombinedForAM, gOfTs
 
 #from exploreSvm import hinge_losses
 #from svmutil import svm_train, svm_problem, svm_predict
@@ -21,17 +22,30 @@ def optimize(data, model_class, alpha, eta, model_parameters=None,
     _, n = L.shape
     t = zeros(k)
     W = ones((k, n)) / n
+    pvals = []
+    dvals = []
     for i in range(10):
-        W, t = weightsCombinedForAM(L, alpha, eta, ts0=t, W0=W) # solve for weights and t, with a relative duality gap or iteration complexity based stopping rules
+        def report(label, W, l2, ts):
+            if W is not None:
+                pvals.append((time.time(), penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)))
+            elif ts is not None:
+                dvals.append((time.time(), gOfTs(L, alpha, ts, eta)))
+        W, t = weightsCombinedForAM(L, alpha, eta, ts0=t, W0=W, report=report) # solve for weights and t, with a relative duality gap or iteration complexity based stopping rules
         states = [model_class(data, w, model_parameters) for w in W]
         L = array([s.squaredLosses() for s in states])
+    dtimes, dvs = zip(*dvals)
+    ptimes, pvs = zip(*pvals)
+    #plt.plot(dtimes, dvs, label='dual')
+    #plt.plot(ptimes, pvs, label='primal')
+    #plt.legend()
+    #plt.show()
     return states, t
 
 
 def clustering(X, k, alpha, n_init=10):
     """
     Cluster the points in columns of X into k clusters.
-    """
+        """
     minJointLoss = inf
     for i in xrange(n_init):
         #initialStates = aa.jointlyPenalizedInitialStates(X.T, wmt.ClusteringState, alpha, k, dualityGapGoal=1e-5)
@@ -60,7 +74,7 @@ def mixtureGaussians(X, k, alpha, n_init=10):
     minJointLoss = inf
     for i in xrange(n_init):
         initialStates = aa.jointlyPenalizedInitialStates(X.T, wmt.ScalarGaussianState, alpha, k, dualityGapGoal=1e-5)
-        finalStates = aa.learnJointlyPenalizedMultipleModels(initialStates, alpha, maxSteps=100, dualityGapGoal=1e-2)
+        finalStates = aa.learnJointlyPenalizedMultipleModels(initialStates, alpha, maxSteps=10, dualityGapGoal=1e-2)
         means = [s.mean for s in finalStates]
         W = array([s.weights for s in finalStates])
         L = array([s.squaredLosses() for s in finalStates])

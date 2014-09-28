@@ -14,7 +14,7 @@ import pdb
 from time import time
 from minimize import proximalCuttingPlaneStream, fastGradientProjectionStream, sgdStream
 from itertools import repeat, count
-from utility import projectToSimplexNewton, nonNegativePart, ei, oneSidedBinarySearch, projectedSubgradient, subgradientPolyakCFM, nop, reportAndBoundStream, fastGradientProjectionMethod, slowGradientProjectionMethod, subset
+from utility import projectToSimplexNewton, projectToSimplexNewtonReference, nonNegativePart, ei, oneSidedBinarySearch, projectedSubgradient, subgradientPolyakCFM, nop, reportAndBoundStream, fastGradientProjectionMethod, slowGradientProjectionMethod, subset
 from cvxoptJointWeightsOptimization import optimalWeightsMultipleModelsFixedProfile, dual1prox2
 from lambdaAndWinnersCache import LambdaAndWinnersTree
 
@@ -48,12 +48,19 @@ def weightsForMultipleLosses2(L, alpha, maxIters=100, report=nop):
 def weightsCombinedForAM(L, alpha, eta, ts0=None, W0=None, maxIters=None, report=nop):
     return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W,
                            weightsForMultipleLosses2FISTAStream, ts0=ts0, W0=W0,
-                           max_iters=maxIters, relative_duality_gap=1e-2,
+                           max_iters=10, relative_duality_gap=1e-2,
                            report=report)
 
 
 def weightsCombinedConsistent(L, alpha, eta, ts0=None, maxIters=1000, report=nop):
     return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W,
+                           weightsForMultipleLosses2FISTAStream, ts0=ts0,
+                           max_iters=maxIters, relative_duality_gap=1e-9,
+                           report=report)
+
+
+def weightsCombinedConsistent2(L, alpha, eta, ts0=None, maxIters=1000, report=nop):
+    return weightsCombined(L, alpha, eta, 10, lowDimSolveStream, ts2W3,
                            weightsForMultipleLosses2FISTAStream, ts0=ts0,
                            max_iters=maxIters, relative_duality_gap=1e-9,
                            report=report)
@@ -68,11 +75,12 @@ def weightsCombined(L, alpha, eta, ratio, ts_stream_maker, to_primal,
      candidates.
     """
     k, n = L.shape
-    ts = ts0 if ts0 is not None else zeros(k)
+    ts = ts0 if ts0 is not None else randn(k)
     W = W0 if W0 is not None else ones((k, n)) / n
     primStr = primal_stream_maker(L, alpha, eta, W)
     W = primStr.next()
     primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
+    report('p0', W, None, None)
 
     # Enough iterations for FISTA to converge from the default W.
     max_iters = max_iters if max_iters is not None else (
@@ -83,38 +91,58 @@ def weightsCombined(L, alpha, eta, ratio, ts_stream_maker, to_primal,
 
     tsStr = ts_stream_maker(L, alpha, eta, ts0=ts0)
 
+    report('d0', None, None, ts)
     dualTime, ts = timedNext(dualTime, tsStr)
+    report('d1', None, None, ts)
     dual_value = gOfTs(L, alpha, ts, eta)
-    init_gap = primal_value - dual_value
+    old_dual_value = dual_value
+
     doPrimal = True
-    ts = tsStr.next()
-    Wc = to_primal(L, ts, alpha, eta)
-    for i in xrange(max_iters):
+    primal_iter = 0
+    dual_iter = 0
+    while primal_iter < max_iters:
         if doPrimal:
+            primal_iter += 1
             primalTime, W = timedNext(primalTime, primStr)
             primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta=eta)
-            report('p1' + str(i), W, None, None)
+            report('p1' + str(primal_iter), W, None, None)
             if dualTime < primalTime:
                 doPrimal = False
         else:
+            dual_iter += 1
+            old_dual_value = dual_value
+            old_ts = ts
             for _ in range(ratio):
                 dualTime, ts = timedNext(dualTime, tsStr, -primal_value)
             dual_value = gOfTs(L, alpha, ts, eta)
-            report('dc' + str(i), None, None, ts)
+            if dual_value < old_dual_value:
+                print("old dual: %f new dual: %f (got worse)" %(old_dual_value, dual_value))
+                #pdb.set_trace()
+
+            report('dc' + str(dual_iter), None, None, ts)
             if dualTime > primalTime:
                 doPrimal = True
                 # Create a primal candidate from dual, replace the current primal if better.
                 Wc = to_primal(L, ts, alpha, eta)
                 primal_c_value = penalizedMultipleWeightedLoss2(L, Wc, alpha, eta=eta)
                 if primal_value > primal_c_value:
+                    #print("Switching primal, gain %f" % (primal_value - primal_c_value))
                     W = Wc
                     primal_value = primal_c_value
                     primStr = primal_stream_maker(L, alpha, eta, W)
+                    report('pc' + str(primal_iter), W, None, None)
+
         gap = primal_value - dual_value
-        if (gap < primal_value * relative_duality_gap) and (gap < init_gap * 0.9):
-            print("Stopping: primal: %f, dual: %f, max_rel_gap: %f, gap: %f, iteration= %i out of potential: %i" %
-                  (primal_value, dual_value, relative_duality_gap, gap, i, max_iters))
+        if gap < primal_value * relative_duality_gap:
             break
+    '''
+    if primal_iter < max_iters:
+        print("Stopping: primal: %f, dual: %f, max_rel_gap: %f, gap: %f, iteration= %i out of potential: %i" %
+              (primal_value, dual_value, relative_duality_gap, gap, primal_iter, max_iters))
+    else:
+        print("Ran out of %i iterations. Primal: %f, dual: %f, max_rel_gap: %f, gap: %f" %
+              (max_iters, primal_value, dual_value, relative_duality_gap, gap))
+              '''
     return W, ts
 
 
@@ -492,6 +520,16 @@ def weightsForMultipleLosses2FISTA(L, alpha, eta, W=None, maxIters=200, report=n
     return reportAndBoundStream(weightStream, maxIters=maxIters, report=report)
 
 
+def tsByCuttingPlanes(L, alpha, eta, ts0=None, maxIters=100, report=nop):
+    k, q = L.shape
+    ts0 = ts0 if not ts0 is None else randn(k)
+
+    tsStream = lowDimSolveStream(L, alpha, eta, ts0=ts0)
+
+    return reportAndBoundStream(tsStream, maxIters=maxIters, report=report)
+
+
+
 def weightsForMultipleLosses2FISTAStream(L, alpha, eta, W0, row_sums=None):
     k, q = L.shape
     row_sums = row_sums if not row_sums is None else ones(k)
@@ -501,12 +539,15 @@ def weightsForMultipleLosses2FISTAStream(L, alpha, eta, W0, row_sums=None):
     f = lambda Wl: penalizedMultipleWeightedLoss2(L, Wl.reshape((k, q)), alpha, eta=eta)
     g = lambda Wl: 0 # Will be applied only to valid weights...
     grad_f = lambda Wl: penalizedMultipleWeightedLoss2Gradient(L, Wl, alpha, eta=eta)
-    prox_g = lambda lip, old_W: array([
-        projectToSimplexNewton(w, target=row_sum)
-        for (row_sum, w)
-        in zip(row_sums, old_W)])
 
-    return fastGradientProjectionStream(f, g, grad_f, prox_g, W0)
+    def prox_g(lip, old_W):
+        newW = zeros_like(old_W)
+        k, _ = newW.shape
+        for j in range(k):
+            projectToSimplexNewton(old_W[j, :], target=row_sums[j], into=newW[j, :])
+        return newW
+
+    return fastGradientProjectionStream(f, g, grad_f, prox_g, W0, initLip=alpha)
 
 
 def penalizedMultipleWeightedLoss2Gradient(L, W, alpha, eta=None):
@@ -545,7 +586,7 @@ def penalizedMultipleWeightedLoss2(L, W, alpha, eta=None):
 
     u = ones(q) / q
     if alpha <= 0:
-        raise Exception('Alpha must be positive.')
+        raise Exception('Alpha must be positive, not %s.' % alpha)
     dev = eta.dot(W) - u
     return sum(eta.dot(L * W)) + alpha * dev.dot(dev)
 
@@ -808,6 +849,32 @@ def ts2W2(L, ts, alpha, eta):
         jidx = where(idxes == j)[0]
         if sum(jidx) > 0:
             partial_wj = projectToSimplexNewton(v[jidx] / eta[j])
+            W[j, jidx] = partial_wj
+        else:
+            W[j, :] = ones(n) / n
+    return W
+
+
+def ts2W3(L, ts, alpha, eta):
+    """ Create a weight matrix from losses and adjustment factors.
+
+    In contrast to other methods, we use ts-L to partition the data points,
+    then directly create valid weight distributions."""
+
+    k, n = L.shape
+
+    # Find the best model to explain each point, and base weights there
+    lambda2, idxes = lambdaAndWinners(L, ts)
+    v = vmin(alpha, lambda2)
+
+    # Compute weights.
+    W = zeros((k, n))
+    for j in range(k):
+        jidx = where(idxes == j)[0]
+        partial_v = v[jidx]
+        assigned_weight = partial_v.sum()
+        if assigned_weight > 0:
+            partial_wj = partial_v / assigned_weight
             W[j, jidx] = partial_wj
         else:
             W[j, :] = ones(n) / n
@@ -1211,19 +1278,34 @@ def dualCoordinateWiseStream(L, alpha, eta, ts0=None):
 
 #@profile
 def dualPrimalCoordinateWise(L, alpha, eta, ts0=None, maxIters=1000, dualityGapGoal=1e-6, report=nop):
-    k, n = L.shape
-    ts = randn(k) if ts0 is None else ts0
-    ts = ts - ts.mean()
-    report('dc-', None, None, ts.copy())
-    c = LambdaAndWinnersTree(L, ts.copy())
-    i = 0
+    tsStr = dualPrimalCoordinateWiseStream(L, alpha, eta, ts0=ts0)
 
+    ts = tsStr.next()
+    report('dc-', None, None, ts.copy())
+
+    i = 0
     while i < maxIters:
         i += 1
         W = ts2W(L, ts, alpha, eta)
         primal_value = penalizedMultipleWeightedLoss2(L, W, alpha, eta)
         report('p1' + str(i), W.copy(), None, None)
+        ts = tsStr.next()
+        report('dc' + str(i), None, None, ts.copy())
 
+        dual_value = gOfTs(L, alpha, ts, eta)
+        if primal_value - dual_value < dualityGapGoal:
+            break
+
+
+def dualPrimalCoordinateWiseStream(L, alpha, eta, ts0=None):
+    k, n = L.shape
+    ts = randn(k) if ts0 is None else ts0
+    ts = ts - ts.mean()
+    yield ts.copy()
+    c = LambdaAndWinnersTree(L, ts.copy())
+    prev_dual = gOfTs(L, alpha, ts, eta)
+
+    while True:
         js_perm = permutation(k)
         for j in js_perm:
             # compute a v
@@ -1239,11 +1321,44 @@ def dualPrimalCoordinateWise(L, alpha, eta, ts0=None, maxIters=1000, dualityGapG
             # find t to cancel advantage at correct cumulative v
             v_sum = cumsum(v[srt])
             fi = (v_sum >= eta[j]).nonzero()[0][0]
-            ts[j] = d[fi]
+            delta_ts_j = d[fi] - ts[j]
+
+            nts = ts.copy()
+            nts[j] = ts[j] + delta_ts_j
+            new_dual = gOfTsJVsRest(L, alpha, nts, eta, j, l2nj)
+            #print "test correctness"
+            if new_dual < prev_dual:
+                #pdb.set_trace()
+                def to_min(delta_tsj):
+                    nts[j] = ts[j] + delta_tsj
+                    return -gOfTsJVsRest(L, alpha, nts, eta, j, l2nj)
+                    #return -gOfTsJVsRest(L, alpha, mts, eta, j, l2nj)
+                delta_ts_j = fminbound(to_min, min(-delta_ts_j, delta_ts_j), max(-delta_ts_j, delta_ts_j), xtol=1e-2)
+                nts[j] = ts[j] + delta_ts_j
+                prop_dual = gOfTs(L, alpha, nts, eta)
+                print("Doing j: %i Prev: %f proposed: %f resulting: %f" % (j, prev_dual, new_dual, prop_dual))
+                new_dual = prop_dual
+
+            prev_dual = new_dual
+            ts[j] = nts[j]
+            '''# debugging
+            old_dual_val = gOfTs(L, alpha, ts, eta)
+            new_dual_val = gOfTs(L, alpha, nts, eta)
+            if old_dual_val > new_dual_val:
+                print nts - ts
+                pdb.set_trace()
+            ts[j] = d[fi]'''
 
             c.update_t_at(j, ts[j])
-            report('dc' + str(i) + 'j' + str(j), None, None, ts.copy())
+            yield ts.copy()
 
-        dual_value = gOfTs(L, alpha, ts, eta)
-        if primal_value - dual_value < dualityGapGoal:
-            break
+
+def gOfTsJVsRest(L, alpha, ts, eta, j, lambda_all_but_j):
+    k, q = L.shape
+    u = ones(q) / q
+    lj = ts[j] - L[j, :]
+    lambda2 = maximum(lambda_all_but_j, lj)
+    v = vmin(alpha, lambda2)
+    return alpha * (norm(u - v) ** 2) - lambda2.dot(v) + eta.dot(ts)
+
+
