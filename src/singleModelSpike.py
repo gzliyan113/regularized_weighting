@@ -9,7 +9,6 @@ from numpy import array, zeros, allclose
 from minL2PenalizedLossOverSimplex import weightsForLosses, penalizedMultipleWeightedLoss2
 from robust_pca import shrinkage_pca
 from weightedModelTypes import MultiLinearRegressionState, ClusteringState, MultiPCAState
-import pdb
 from utility import squaredColNorm, nonNegativePart
 from random import sample
 import matplotlib.pyplot as plt
@@ -25,7 +24,7 @@ def create_regression_task(d, n, noise_strength, alt_source_strength, noisy_prop
     first_outlier = int(ceil((1 - noisy_proportion) * n))
     #print("first_outlier = %s" % first_outlier)
     outlier_mods = rns.dot(X[:, first_outlier:]) * alt_source_strength + \
-                   randn(n - first_outlier) * noise_strength
+        randn(n - first_outlier) * noise_strength
     #print("outlier_mods %s" % outlier_mods)
     y[first_outlier:] += outlier_mods
     return X, y, rgt
@@ -50,7 +49,7 @@ def linear_regression_as_function_of_beta():
 def experiment_matrix_results(make_data, row_param_values, col_param_values, methods, summarize):
     n_cols = col_param_values.shape[0]
     n_rows = row_param_values.shape[0]
-    result_matrices = [ones((n_rows, n_cols)) * inf for m in methods]
+    result_matrices = [ones((n_rows, n_cols)) * inf for _ in methods]
     for ip, noise_prop in enumerate(col_param_values):
         for io, offset in enumerate(row_param_values):
             print("."),
@@ -93,13 +92,10 @@ def pca_experiment_matrix_results(big_dim, d, samples, noisy_proportions, distur
     def score(basis, gt_basis):
         return norm(1 - angleCosinesBetweenBases(basis[:, :big_dim], gt_basis[:, :big_dim]))
 
-    def huber1(X):
-        return shrinkage_pca(X, big_dim, 0.1).U
+    def l1regularized_correction0(X):
+        return shrinkage_pca(X, big_dim, 1).U
 
-    def huber1_5(X):
-        return shrinkage_pca(X, big_dim, 0.0333).U
-
-    def huber2(X):
+    def l1regularized_correction2(X):
         return shrinkage_pca(X, big_dim, 0.01).U
 
     def weighted(X):
@@ -112,28 +108,36 @@ def pca_experiment_matrix_results(big_dim, d, samples, noisy_proportions, distur
         return (MultiPCAState(X.T, u, modelParameters={'d': big_dim})).U
 
     return experiment_matrix_results(make_task, noisy_proportions, disturbance_levels,
-                                     [(huber1, r"Huber-loss with $\lambda = $ 0.1."),
-                                      (huber1_5, r"Huber-loss with $\lambda = $ 0.0333."),
-                                      (huber2, r"Huber-loss with $\lambda = $ 0.01."),
-                                      (weighted, "RW, automatically set beta."),
-                                      (standard, "Regular PCA.")],
+                                     [(weighted, "RW"),
+                                      (l1regularized_correction2, r"l1 reg. $\lambda = $ 0.01."),
+                                      (l1regularized_correction0, r"l1 reg. $\lambda = $ 1."),
+                                      (standard, "PCA")],
                                      score)
 
 
 def display_result_matrices(matrices, method_names, row_vals, col_vals, ylabel, xlabel):
+    matrices = [np.log10(m) for m in matrices]
     high = max([m.max() for m in matrices])
     low = min([m.min() for m in matrices])
     n_methods = len(method_names)
-    for i, (m, n) in enumerate(zip(matrices, method_names)):
+
+    fig, axes = plt.subplots(nrows=1, ncols=n_methods)
+
+    for i, (m, n, ax) in enumerate(zip(matrices, method_names, axes.flat)):
         plt.subplot(1, n_methods, i+1)
-        plt.imshow(m, cmap=plt.cm.gray_r, vmin=low, vmax=high, interpolation='nearest')
+        im = plt.imshow(m, cmap=plt.cm.gray_r, vmin=low, vmax=high, interpolation='nearest')
         plt.title(n)
-        plt.yticks(arange(row_vals.shape[0]), ["%.2f" % rv for rv in row_vals])
         plt.xticks(arange(col_vals.shape[0]), ["%.2f" % cv for cv in col_vals], rotation=70)
-        plt.colorbar()
-        plt.xlabel(xlabel)
+        plt.xlabel(xlabel)  # Can share via:
+        # http://stackoverflow.com/questions/6963035/pyplot-axes-labels-for-subplots
         if i == 0:
+            plt.yticks(arange(row_vals.shape[0]), ["%.2f" % rv for rv in row_vals])
             plt.ylabel(ylabel)
+        else:
+            plt.yticks([])
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.82, 0.4, 0.03, 0.2])
+    fig.colorbar(im, cax=cbar_ax)
 
 
 def linear_regression_experiment_matrix_results(d, n, noise_strengths, alt_src_strengths):
@@ -144,15 +148,15 @@ def linear_regression_experiment_matrix_results(d, n, noise_strengths, alt_src_s
     def score(r, rgt):
         return norm(r - rgt)
 
-    def huber(data):
+    def l1regularized_correction(data):
         X, y = data
-        return huber_regression(X.T, y, 0.1)
+        return l1regularized_correction_regression(X.T, y, 0.1)
 
     def weighted(data):
         X, y = data
         return weighted_regression2(X.T, y).r
 
-    return experiment_matrix_results(make_task, noise_strengths, alt_src_strengths, [huber, weighted], score)
+    return experiment_matrix_results(make_task, noise_strengths, alt_src_strengths, [l1regularized_correction, weighted], score)
 
 
 def linear_regression_experiment_matrix_results2(d, n, noisy_props, alt_src_strengths):
@@ -163,9 +167,9 @@ def linear_regression_experiment_matrix_results2(d, n, noisy_props, alt_src_stre
     def score(r, rgt):
         return norm(r - rgt)
 
-    def huber(data):
+    def l1regularized_correction(data):
         X, y = data
-        return huber_regression(X.T, y, 0.1)
+        return l1regularized_correction_regression(X.T, y, 0.1)
 
     def weighted(data):
         X, y = data
@@ -179,13 +183,13 @@ def linear_regression_experiment_matrix_results2(d, n, noisy_props, alt_src_stre
         return s.r
 
     return experiment_matrix_results(make_task, noisy_props, alt_src_strengths,
-                                     [(huber, "Min. Huber Loss."),
+                                     [(l1regularized_correction, "l1 reg. data adj."),
                                      (weighted, "RW loss."),
                                      (regular, "std. regression.")],
                                      score)
 
 
-def huber_regression(point_rows, y, eps):
+def l1regularized_correction_regression(point_rows, y, eps):
     n, d = point_rows.shape
     u = ones(n) / n
     s = MultiLinearRegressionState((point_rows.T, y), u, {'regularizationStrength': 0})
@@ -283,12 +287,13 @@ def weighted_model_find_beta2(data, model_class, model_parameters):
     u = ones(n) / n
     uni_s = model_class(data, u, model_parameters)
 
-    def w_distance(s):
-        return sqrt((norm((n * s.weights) - 1) ** 2) / n)
-
     beta = uni_s.weights.dot(uni_s.squaredLosses())
     s = weighted_modeling(data, model_class, model_parameters, beta)
-    '''max_distance = 1.1
+    return s, beta
+
+
+    '''A variant on search
+    max_distance = 1.1
     plt.plot(s.weights, label='wdis = {0:f}, beta = {1:f}, werr = {2:f}'.format(w_distance(s), beta,
                                                                                 s.weights.dot(s.squaredLosses())))
 
@@ -311,7 +316,25 @@ def weighted_model_find_beta2(data, model_class, model_parameters):
     #plt.show()
     print(median_error_at_beta)
     return best_s, best_beta'''
-    return s, beta
+
+
+def weighted_model_find_beta3(data, model_class, model_parameters):
+    beta = 1e6
+    s = weighted_modeling(data, model_class, model_parameters, beta)
+    n = s.weights.shape[0]
+    u = ones(n) / n
+    s = model_class(data, u, model_parameters)
+    typ_loss = np.percentile(s.squaredLosses(), 68)
+    # Try to use lower beta
+    while typ_loss < beta:
+        old_beta = beta
+        beta = typ_loss
+        s = weighted_modeling(data, model_class, model_parameters, beta)
+        typ_loss = np.percentile(s.squaredLosses(), 68)
+
+    # Last change didn't improve things, go back once
+    s = weighted_modeling(data, model_class, model_parameters, old_beta)
+    return s, old_beta
 
 
 def weighted_modeling(data, model_class, model_parameters, beta, n_init=10):
@@ -337,7 +360,7 @@ def weighted_modeling(data, model_class, model_parameters, beta, n_init=10):
     return best_state
 
 
-def huber_clustering(X, k, eps):
+def l1regularized_correction_clustering(X, k, eps):
     n, dim = X.shape
     centers = (X.T[:, sample(range(n), k)]).T
     L = array([squaredColNorm((X - center).T) for center in centers])
@@ -397,7 +420,7 @@ def location_estimation_minimal_experiment(d):
 
     rw_centers, rw_labels = si.clustering(data_point_per_column.T, 1, alpha, n_init=10)
     rw2_centers = location_estimation2(data_point_per_column)
-    hb_centers, hb_labels = huber_clustering(data_point_per_column.T, 1, 10)
+    hb_centers, hb_labels = l1regularized_correction_clustering(data_point_per_column.T, 1, 10)
 
     rwc = rw_centers[0][0]
     rw2c = rw2_centers[0]
@@ -427,8 +450,8 @@ def location_estimation_experiment_results(d, noise_proportions, noise_offsets):
     def score(x, xgt):
         return norm(x-xgt)
 
-    def huber(data_point_per_column):
-        hb_centers, hb_labels = huber_clustering(data_point_per_column.T, 1, 0.01)
+    def l1regularized_correction(data_point_per_column):
+        hb_centers, hb_labels = l1regularized_correction_clustering(data_point_per_column.T, 1, 0.01)
         return hb_centers[0]
 
     def weighted(data_point_per_column):
@@ -439,7 +462,7 @@ def location_estimation_experiment_results(d, noise_proportions, noise_offsets):
         return data_point_per_column.mean(axis=1)
 
     return experiment_matrix_results(make_task, noise_proportions, noise_offsets,
-                                     [(huber, "Min. Huber Loss."),
+                                     [(l1regularized_correction, "l1 reg. data adj."),
                                      (weighted, "RW loss."),
                                      (regular, "std. averaging.")],
                                      score)
@@ -456,7 +479,7 @@ def location_estimation_experiment_results_old(d, noise_offsets, noise_proportio
             _, n = data_point_per_column.shape
 
             rw2_centers = location_estimation2(data_point_per_column)
-            hb_centers, hb_labels = huber_clustering(data_point_per_column.T, 1, 0.01)
+            hb_centers, hb_labels = l1regularized_correction_clustering(data_point_per_column.T, 1, 0.01)
 
             rw2c = rw2_centers[0]
             hbc = hb_centers[0][0]
