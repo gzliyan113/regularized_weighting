@@ -1,16 +1,17 @@
-from numpy import logical_not, sqrt, ones, logspace, linspace, inf, newaxis, log2, median, argmin, eye, diag, dot
+from numpy import logical_not, sqrt, ones, logspace, inf, newaxis, log2, eye, diag, dot, arange,array, zeros, allclose
 from numpy.linalg import norm, svd
-from math import floor, log10, ceil
-from numpy.numarray import arange
-import numpy as np
 from numpy.random import randn
-from numpy import array, zeros, allclose
+import numpy as np
+
+from random import sample
+from math import floor, log10, ceil
+
+import matplotlib.pyplot as plt
+
 from minL2PenalizedLossOverSimplex import weightsForLosses, penalizedMultipleWeightedLoss2
 from robust_pca import shrinkage_pca
 from weightedModelTypes import MultiLinearRegressionState, ClusteringState, MultiPCAState
 from utility import squaredColNorm, nonNegativePart
-from random import sample
-import matplotlib.pyplot as plt
 
 
 def create_regression_task(d, n, noise_strength, alt_source_strength, noisy_proportion=0.1):
