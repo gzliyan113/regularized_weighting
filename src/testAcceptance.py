@@ -1,8 +1,9 @@
 from nose.plugins.attrib import attr
-
 from numpy.testing import assert_array_less
 from numpy import array, hstack
 from numpy.random import rand
+
+import singleModelSpike as sms
 from hopkinsTesting import runOnManyExtraNoise, findBalancedSets, manyNames, rest
 import alternatingAlgorithms
 import utility
@@ -87,3 +88,11 @@ def testBeatLloydsOnRobustMeasureQuadratic():
     eps = 0.25
     assert (sum([epsCorrect(s, eps) for s in ourBestSSet]) >=
             sum([epsCorrect(s, eps) for s in lloydsBestSSet]))
+
+
+def testSingleModel():
+    from numpy import linspace, logspace
+
+    alt_src_strengths = logspace(-1, 1, 2)
+    noisy_props = linspace(0, 0.45, 2)
+    sms.linear_regression_experiment_matrix_results2(10, 1000, noisy_props, alt_src_strengths)
