@@ -2,7 +2,6 @@ from numpy import logical_not, sqrt, ones, logspace, linspace, inf, newaxis, log
 from numpy.linalg import norm, svd
 from math import floor, log10, ceil
 from numpy.numarray import arange
-import simpleInterface as si
 import numpy as np
 from numpy.random import randn
 from numpy import array, zeros, allclose
@@ -28,22 +27,6 @@ def create_regression_task(d, n, noise_strength, alt_source_strength, noisy_prop
     #print("outlier_mods %s" % outlier_mods)
     y[first_outlier:] += outlier_mods
     return X, y, rgt
-
-
-def linear_regression_as_function_of_beta():
-    n_samples = 1000
-    X, y, rgt = create_regression_task(10, n_samples, 100, 0)
-    n_betas = 10
-    u = ones(n_samples) / n_samples
-    dists_from_uniform = zeros(n_betas)
-    nnz_counts = zeros(n_betas)
-    inlier_mses = zeros(n_betas)
-    for i, beta in enumerate(logspace(0.01, 100, n_betas)):
-        s = weighted_regression(X.T, y, beta)
-        dists_from_uniform[i] = norm(s.weights - u)
-        nnz_counts[i] = np.count_nonzero(s.weights)
-        inlier_mses[i] = s.squaredLosses()[:900].mean()
-    return dists_from_uniform, nnz_counts, inlier_mses
 
 
 def experiment_matrix_results(make_data, row_param_values, col_param_values, methods, summarize):
@@ -203,19 +186,6 @@ def l1regularized_correction_regression(point_rows, y, eps):
         s = MultiLinearRegressionState((point_rows.T, f_y), u, modelParameters={'regularizationStrength': 0})
         r = s.r
     return r
-
-
-def weighted_regression(point_rows, y, beta):
-    samples, dim = point_rows.shape
-    alpha = beta * samples
-    w = ones(samples) / samples
-    w_old = zeros(samples)
-    s = None
-    while not allclose(w, w_old):
-        w_old = w
-        s = MultiLinearRegressionState((point_rows.T, y), w, {'regularizationStrength': 0})
-        w = weightsForLosses(s.squaredLosses(), alpha)
-    return s
 
 
 def weighted_regression2(point_rows, y):
@@ -399,34 +369,6 @@ def soft_shrink_rows(X, length):
     return (unit_length_rows.T * desired_lengths).T
 
 
-def location_estimation_minimal_experiment(d):
-    data_point_per_column = location_data_one_sided_noise(d, 1000)
-    _, n = data_point_per_column.shape
-    alpha = 3 * n
-
-    rw_centers, rw_labels = si.clustering(data_point_per_column.T, 1, alpha, n_init=10)
-    rw2_centers = location_estimation2(data_point_per_column)
-    hb_centers, hb_labels = l1regularized_correction_clustering(data_point_per_column.T, 1, 10)
-
-    rwc = rw_centers[0][0]
-    rw2c = rw2_centers[0]
-    hbc = hb_centers[0][0]
-
-    print("90% of data has mean of zero, stddev of 1. 10% of data have mean 1000.")
-    print("Values of different estimators:")
-
-    results = [("rw 3", rwc),
-               ("rw2 3", rw2c),
-               ("hb 10", hbc),
-               ("mean", data_point_per_column[0, :].mean()),
-               ("median", np.median(data_point_per_column)),
-               ("inlier mean", np.mean(data_point_per_column[0, :900])),
-               ("inlier median", np.median(data_point_per_column[0, :900]))]
-
-    for n, e in results:
-        print("Alg %s estimates: %s" % (n, e))
-
-
 def location_estimation_experiment_results(d, noise_proportions, noise_offsets):
     def make_task(noise_prop, noise_offset):
         data_point_per_column = location_data_one_sided_noise(d, noise_offset=noise_offset, noisy_proportion=noise_prop)
@@ -452,35 +394,3 @@ def location_estimation_experiment_results(d, noise_proportions, noise_offsets):
                                      (weighted, "RW loss."),
                                      (regular, "std. averaging.")],
                                      score)
-
-
-def location_estimation_experiment_results_old(d, noise_offsets, noise_proportions):
-    n_props = noise_proportions.shape[0]
-    n_dists = noise_offsets.shape[0]
-    resrw = ones((n_dists, n_props)) * inf
-    reshb = ones((n_dists, n_props)) * inf
-    for ip, noise_prop in enumerate(noise_proportions):
-        for io, offset in enumerate(noise_offsets):
-            data_point_per_column = location_data_one_sided_noise(d, noise_offset=offset, noisy_proportion=noise_prop)
-            _, n = data_point_per_column.shape
-
-            rw2_centers = location_estimation2(data_point_per_column)
-            hb_centers, hb_labels = l1regularized_correction_clustering(data_point_per_column.T, 1, 0.01)
-
-            rw2c = rw2_centers[0]
-            hbc = hb_centers[0][0]
-            resrw[io, ip] = rw2c
-            reshb[io, ip] = hbc
-    return resrw, reshb
-
-
-def location_estimation_experiment():
-    n_props = 10
-    noise_offsets = array([0, 10, 100, 1000])
-    noise_proportions = linspace(0, 0.45, n_props)
-    resrw, reshb = location_estimation_experiment_results(10, noise_offsets, noise_proportions)
-    plt.imshow(resrw)
-    plt.title("Given mixture of data source (N(0,1/sqrt(d)) and " +
-              "noisy source (N(mu,10/sqrt(d))), estimate data source mean.")
-    plt.xlabel("Proportion of noisy source.")
-    plt.ylabel("Distance between sources.")
