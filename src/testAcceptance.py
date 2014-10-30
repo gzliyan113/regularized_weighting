@@ -9,7 +9,7 @@ import utility
 import weightedModelTypes
 
 
-@attr('slow')
+@attr('difficult') # Requires the hopkins dataset to be present.
 def testBeatLloydsOnRobustMeasureHopkins():
     "Our method vs Lloyd at high noise on two Hopkins datasets"
     imbalanceRatios, names = findBalancedSets(manyNames + rest)
@@ -35,7 +35,7 @@ def testBeatLloydsOnRobustMeasureHopkins():
     assert_array_less(array(ourMedianAbsLoss), array(lloydsMedianAbsLoss))
 
 
-@attr('slow')
+@attr('difficult') # Requires the hopkins dataset to be present.
 def testBeatLloydsOnRobustMeasureQuadratic():
     "Our method vs Lloyds on quadratic regression, should have more eps correct answers."
     coeffs = [array([-0.04780819, -0.3844407, -1.73699185]),

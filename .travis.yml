@@ -18,4 +18,4 @@ install:
 before_script: "cd src; python setup.py build_ext --inplace"
 
 # command to run tests
-script: nosetests
+script: nosetests -a '!difficult'

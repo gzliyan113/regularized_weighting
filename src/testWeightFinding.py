@@ -1,3 +1,4 @@
+from nose.plugins.attrib import attr
 from numpy import array, allclose, ones
 from numpy.random import rand
 from minL2PenalizedLossOverSimplex import weightsForMultipleLosses2BlockMinimization, penalizedMultipleWeightedLoss2, weightsForMultipleLosses2GradientProjection, dual1solve5, dual1value, lambda2W, ts2WMixedColumns, tsFromLambda, validateWeights, weightsForMultipleLosses2FISTA, ts2W
@@ -24,8 +25,10 @@ def testBlockwiseOptimizationVSCvxAverageFormulationVSGradientProjection():
     assert allclose(WFISTA, WBlock, atol=0.03)
 
 
+@attr('difficult') # requires cvx_opt to use glpk
 def testDualThenLinearBounds():
-    "Solve dual then convert to primal. The interval between dual and primal values should be close to the value of an OTS solution."
+    """Solve dual then convert to primal. The interval between dual and primal values
+    should be close to the value of an OTS solution."""
     k, n = (4, 200)
     L = rand(k, n)
     alpha = 3 * n
