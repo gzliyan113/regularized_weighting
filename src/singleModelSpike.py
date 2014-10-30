@@ -156,7 +156,7 @@ def linear_regression_experiment_matrix_results(d, n, noise_strengths, alt_src_s
         X, y = data
         return weighted_regression2(X.T, y).r
 
-    return experiment_matrix_results(make_task, noise_strengths, alt_src_strengths, [l1regularized_correction, weighted], score)
+    return experiment_matrix_results(make_task, noise_strengths, alt_src_strengths, [weighted, l1regularized_correction], score)
 
 
 def linear_regression_experiment_matrix_results2(d, n, noisy_props, alt_src_strengths):
@@ -183,8 +183,8 @@ def linear_regression_experiment_matrix_results2(d, n, noisy_props, alt_src_stre
         return s.r
 
     return experiment_matrix_results(make_task, noisy_props, alt_src_strengths,
-                                     [(l1regularized_correction, "l1 reg. data adj."),
-                                     (weighted, "RW loss."),
+                                     [(weighted, "RW loss."),
+                                     (l1regularized_correction, "l1 reg. data adj."),
                                      (regular, "std. regression.")],
                                      score)
 
@@ -219,7 +219,7 @@ def weighted_regression(point_rows, y, beta):
 
 
 def weighted_regression2(point_rows, y):
-    s, beta = weighted_model_find_beta2((point_rows.T, y), MultiLinearRegressionState, {'regularizationStrength': 0})
+    s, beta = weighted_model((point_rows.T, y), MultiLinearRegressionState, {'regularizationStrength': 0})
     #print("beta is %s" % beta)
     n = s.weights.shape[0]
     #print("norm(w-1/n) * sqrt(n) = %s" % (norm(s.weights - (ones(n) / n)) * sqrt(n)))
@@ -232,7 +232,7 @@ def location_estimation(data, beta):
 
 
 def location_estimation2(data):
-    s, beta = weighted_model_find_beta2(data, ClusteringState, None)
+    s, beta = weighted_model(data, ClusteringState, None)
     #print("beta is %s" % beta)
     #n = s.weights.shape[0]
     #print("norm(w-1/n) * sqrt(n) = %s" % (norm(s.weights - (ones(n) / n)) * sqrt(n)))
@@ -240,8 +240,20 @@ def location_estimation2(data):
 
 
 def weighted_pca(data, d):
-    s, beta = weighted_model_find_beta2(data, MultiPCAState, {'d': d})
+    s, beta = weighted_model(data, MultiPCAState, {'d': d})
     return s
+
+
+def weighted_model(data, model_class, model_parameters, algorithm='unif_then_average_loss'):
+
+    algs = {'unif_then_average_loss': weighted_model_find_beta2,
+            'beta_68th': weighted_model_find_beta3,
+            'w_distance': weighted_model_find_beta}
+
+    if algorithm in algs:
+        return algs[algorithm](data, model_class, model_parameters)
+    else:
+        error("no such algorithm")
 
 
 def weighted_model_find_beta(data, model_class, model_parameters):
@@ -290,32 +302,6 @@ def weighted_model_find_beta2(data, model_class, model_parameters):
     beta = uni_s.weights.dot(uni_s.squaredLosses())
     s = weighted_modeling(data, model_class, model_parameters, beta)
     return s, beta
-
-
-    '''A variant on search
-    max_distance = 1.1
-    plt.plot(s.weights, label='wdis = {0:f}, beta = {1:f}, werr = {2:f}'.format(w_distance(s), beta,
-                                                                                s.weights.dot(s.squaredLosses())))
-
-    median_error_at_beta = dict()
-    while w_distance(s) <= max_distance:
-        beta /= 2
-        s = weighted_modeling(data, model_class, model_parameters, beta)
-        median_error_at_beta[beta] = median(s.squaredLosses())
-        print("w_dis = %s, at beta = %f, werr: %f" % (w_distance(s), beta, s.weights.dot(s.squaredLosses())))
-        plt.plot(s.weights, label='wdis = {0:f}, beta = {1:f}, werr = {2:f}'.format(w_distance(s), beta,
-                                                                                    s.weights.dot(s.squaredLosses())))
-
-    betas_col_err_col = array(list(median_error_at_beta.iteritems()))
-    best_beta_loc = argmin(betas_col_err_col[:, 1])
-    best_beta = betas_col_err_col[best_beta_loc, 0]
-    best_s = weighted_modeling(data, model_class, model_parameters, best_beta)
-    plt.legend(loc='best')
-    #plt.show()
-    plt.scatter(log2(betas_col_err_col[:, 0]), betas_col_err_col[:, 1])
-    #plt.show()
-    print(median_error_at_beta)
-    return best_s, best_beta'''
 
 
 def weighted_model_find_beta3(data, model_class, model_parameters):

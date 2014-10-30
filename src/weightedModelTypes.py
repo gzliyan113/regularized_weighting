@@ -63,9 +63,9 @@ class MultiPCAState:
                    for _ in arange(k)])
         return L
 
-    def __init__(self, theData, theWeights, modelParameters):
+    def __init__(self, data_point_per_column, theWeights, modelParameters):
         self.d = modelParameters['d']
-        self.data = theData
+        self.data = data_point_per_column
         self.weights = theWeights
         self.n, self.numPoints = self.data.shape
 
