@@ -1,4 +1,4 @@
-from numpy import logical_not, sqrt, ones, logspace, inf, newaxis, log2, eye, diag, dot, arange,array, zeros, allclose
+from numpy import logical_not, sqrt, ones, logspace, inf, newaxis, log2, eye, diag, dot, arange, array, zeros, allclose
 from numpy.linalg import norm, svd
 from numpy.random import randn
 import numpy as np
@@ -83,7 +83,6 @@ def pca_experiment_matrix_results(big_dim, d, samples, noisy_proportions, distur
         return shrinkage_pca(X, big_dim, 0.01).U
 
     def weighted(X):
-        beta = 1
         return weighted_pca(X.T, big_dim).U
 
     def standard(X):
@@ -140,7 +139,8 @@ def linear_regression_experiment_matrix_results(d, n, noise_strengths, alt_src_s
         X, y = data
         return weighted_regression2(X.T, y).r
 
-    return experiment_matrix_results(make_task, noise_strengths, alt_src_strengths, [weighted, l1regularized_correction], score)
+    return experiment_matrix_results(make_task, noise_strengths, alt_src_strengths,
+                                     [weighted, l1regularized_correction], score)
 
 
 def linear_regression_experiment_matrix_results2(d, n, noisy_props, alt_src_strengths):
@@ -191,9 +191,6 @@ def l1regularized_correction_regression(point_rows, y, eps):
 
 def weighted_regression2(point_rows, y):
     s, beta = weighted_model((point_rows.T, y), MultiLinearRegressionState, {'regularizationStrength': 0})
-    #print("beta is %s" % beta)
-    n = s.weights.shape[0]
-    #print("norm(w-1/n) * sqrt(n) = %s" % (norm(s.weights - (ones(n) / n)) * sqrt(n)))
     return s
 
 
@@ -224,7 +221,7 @@ def weighted_model(data, model_class, model_parameters, algorithm='unif_then_ave
     if algorithm in algs:
         return algs[algorithm](data, model_class, model_parameters)
     else:
-        error("no such algorithm")
+        raise "no such algorithm"
 
 
 def weighted_model_find_beta(data, model_class, model_parameters):
@@ -251,8 +248,6 @@ def weighted_model_find_beta(data, model_class, model_parameters):
             beta /= 2
             s = weighted_modeling(data, model_class, model_parameters, beta)
             print("w_dis = %s, at beta = %f, werr: %f" % (w_distance(s), beta, s.weights.dot(s.squaredLosses())))
-            #plt.plot(s.weights, label='wdis = {0:f}, beta = {1:f}, werr = {2:f}'.format(w_distance(s), beta,
-            #                                                                            s.weights.dot(s.squaredLosses())))
 
         print("finished at w_dis = %s, doubling once." % w_distance(s))
         beta *= 2
@@ -282,6 +277,7 @@ def weighted_model_find_beta3(data, model_class, model_parameters):
     u = ones(n) / n
     s = model_class(data, u, model_parameters)
     typ_loss = np.percentile(s.squaredLosses(), 68)
+    old_beta = None
     # Try to use lower beta
     while typ_loss < beta:
         old_beta = beta
@@ -299,8 +295,7 @@ def weighted_modeling(data, model_class, model_parameters, beta, n_init=10):
     best_state = None
     for t in range(n_init):
         L = model_class.randomModelLosses(data, 1, model_parameters)
-        n = L.shape[0]
-        _, samples = L.shape
+        n, samples = L.shape
         alpha = beta * samples
         w = weightsForLosses(L[0, :], alpha)
         w_old = zeros(samples)
