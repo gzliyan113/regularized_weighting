@@ -1,9 +1,12 @@
-from numpy.random import rand, randn, randint
-from numpy import cumsum, ceil, array, repeat, zeros, tile, linspace
+from numpy.random import randn, randint
+from numpy import array, zeros, tile, linspace
 from math import sqrt
-import simpleInterface as si
+
 from sklearn.metrics import adjusted_mutual_info_score
 from sklearn.cluster import k_means
+
+import simpleInterface as si
+
 
 def make_clustered_points(dim, num_clusters, num_points):
     """
