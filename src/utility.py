@@ -196,7 +196,7 @@ def nonNegativePartII(v):
 
 
 def weightedData(data, weights):
-    return data.dot(diag(sqrt(weights)))
+    return data * sqrt(weights)
 
 
 def squaredColNorm(data):
