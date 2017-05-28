@@ -11,8 +11,20 @@ from itertools import count, izip, islice
 from numpy.core.multiarray import count_nonzero
 from minimize import fastGradientProjectionStream
 
+import time
+
 # noinspection PyUnresolvedReferences
 from optimized_rw_core import projCore, make_positive
+
+
+class Timer:
+    def __enter__(self):
+        self.start = time.time()
+        return self
+
+    def __exit__(self, *args):
+        self.end = time.time()
+        self.interval = self.end - self.start
 
 
 def nop(*a, **kwa):
