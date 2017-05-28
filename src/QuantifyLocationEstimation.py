@@ -19,7 +19,7 @@ from numpy import array, linspace, arange, log10
 
 n_props = 10
 noise_proportions = linspace(0, 0.45, n_props)
-noise_offsets = array([0, 10, 100, 1000])
+noise_offsets = array([0, 0.1, 1, 10, 100, 1000])
 
 # <codecell>
 
