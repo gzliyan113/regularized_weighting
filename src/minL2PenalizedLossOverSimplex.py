@@ -1181,8 +1181,8 @@ def lowDimCoordinateMinimizationStream3(L, alpha, ts0=None):
 
         ts += modvecs[j] * fminbound(f, -b, b, xtol=1e-5)
         ts = ts - ts.mean()
-        print "ts %s, j %s" % (ts, j)
-        print "sums: %s" % sumWeightsFor(alpha, L, ts)
+        print("ts %s, j %s" % (ts, j))
+        print("sums: %s" % sumWeightsFor(alpha, L, ts))
         #if abs(sumWeightsFor(alpha, L, ts)[j] - 1) > 0.01:
         #    pdb.set_trace()
         b = 2 * abs(ts).max()
