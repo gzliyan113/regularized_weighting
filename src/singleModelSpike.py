@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from minL2PenalizedLossOverSimplex import weightsForLosses, penalizedMultipleWeightedLoss2
 from robust_pca import shrinkage_pca
 from weightedModelTypes import MultiLinearRegressionState, ClusteringState, MultiPCAState
-from utility import squaredColNorm, nonNegativePart
+from utility import squaredColNorm, nonNegativePart, Timer
 
 
 def create_regression_task(d, n, noise_strength, alt_source_strength, noisy_proportion=0.1):
@@ -30,20 +30,23 @@ def create_regression_task(d, n, noise_strength, alt_source_strength, noisy_prop
     return X, y, rgt
 
 
-def experiment_matrix_results(make_data, row_param_values, col_param_values, methods, summarize):
+def experiment_matrix_results(make_data, row_param_values, col_param_values, methods, summarize, tries=1):
     n_cols = col_param_values.shape[0]
     n_rows = row_param_values.shape[0]
     result_matrices = [ones((n_rows, n_cols)) * inf for _ in methods]
+    timing_matrices = [ones((n_rows, n_cols)) * inf for _ in methods]
     for ip, noise_prop in enumerate(col_param_values):
         for io, offset in enumerate(row_param_values):
             print("."),
             data, gt = make_data(offset, noise_prop)
             for i, (m, _) in enumerate(methods):
-                estimate = m(data)
+                with Timer() as time_taken:
+                    estimate = m(data)
                 result_matrices[i][io, ip] = summarize(estimate, gt)
+                timing_matrices[i][io, ip] = time_taken.interval
         print(".")
     method_names = [n for (m, n) in methods]
-    return result_matrices, method_names
+    return result_matrices, method_names, timing_matrices
 
 
 def annoying_pca_data(dimension, big_dims, total_samples, noisy_proportion, noise_level, disturbance_level):

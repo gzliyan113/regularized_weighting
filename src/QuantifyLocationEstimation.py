@@ -23,14 +23,14 @@ noise_offsets = array([0, 10, 100, 1000])
 
 # <codecell>
 
-resmat, method_names = sms.location_estimation_experiment_results(10, noise_proportions, noise_offsets)
+resmat, method_names, method_times = sms.location_estimation_experiment_results(10, noise_proportions, noise_offsets)
 
-joblib.dump((resmat, method_names, noise_proportions, noise_offsets), "loc_est_results.jl", compress=3)
+joblib.dump((resmat, method_names, method_times, noise_proportions, noise_offsets), "loc_est_results.jl", compress=3)
 
 
 # <codecell>
 
-(resmat, method_names, noise_proportions, noise_offsets) = joblib.load("loc_est_results.jl")
+(resmat, method_names, method_times, noise_proportions, noise_offsets) = joblib.load("loc_est_results.jl")
 sms.display_result_matrices(resmat, method_names,
                             noise_proportions, noise_offsets,
                             "Proportion of noisy points.", r"$\left\Vert a - b \right\Vert_2$")
