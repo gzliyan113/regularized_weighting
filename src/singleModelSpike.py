@@ -54,13 +54,14 @@ def annoying_pca_data(dimension, big_dims, total_samples, noisy_proportion, nois
     noise_scale = dimension ** -0.5
     scales = ones(dimension) * noise_scale * noise_level
     scales[:big_dims] = big_dims ** -0.5
-    X = randn(total_samples, dimension).dot(diag(scales))
+    Z = randn(total_samples, dimension)
+    X = Z.dot(diag(scales))
 
     # Adding disturbance
     noisy_samples = int(floor(total_samples * noisy_proportion))
     A = zeros((dimension, dimension))
     A[-1, 0] = 1
-    X[:noisy_samples, :] += A.dot(X[:noisy_samples, :].T).T * disturbance_level
+    X[:noisy_samples, :] += A.dot(Z[:noisy_samples, :].T).T * disturbance_level
 
     return X, eye(dimension)
 
