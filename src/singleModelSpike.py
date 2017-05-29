@@ -1,4 +1,5 @@
-from numpy import logical_not, sqrt, ones, logspace, inf, newaxis, log2, eye, diag, dot, arange, array, zeros, allclose
+from numpy import (logical_not, sqrt, ones, logspace, inf, newaxis, log2, eye, diag, dot, arange, array, zeros,
+                   allclose, zeros_like)
 from numpy.linalg import norm, svd
 from numpy.random import randn
 import numpy as np
@@ -7,6 +8,7 @@ from random import sample
 from math import floor, log10, ceil
 
 import matplotlib.pyplot as plt
+from numpy import ones_like
 
 from minL2PenalizedLossOverSimplex import weightsForLosses, penalizedMultipleWeightedLoss2
 from robust_pca import shrinkage_pca
@@ -211,6 +213,14 @@ def location_estimation2(data):
     return s.center
 
 
+def lts_location_estimation(data):
+    s, beta = weighted_model(data, ClusteringState, None)
+    #print("beta is %s" % beta)
+    #n = s.weights.shape[0]
+    #print("norm(w-1/n) * sqrt(n) = %s" % (norm(s.weights - (ones(n) / n)) * sqrt(n)))
+    return s.center
+
+
 def weighted_pca(data, d):
     s, beta = weighted_model(data, MultiPCAState, {'d': d})
     return s
@@ -220,6 +230,7 @@ def weighted_model(data, model_class, model_parameters, algorithm='unif_then_ave
 
     algs = {'unif_then_average_loss': weighted_model_find_beta2,
             'beta_68th': weighted_model_find_beta3,
+            'beta_68th_fast': weighted_model_find_beta4,
             'w_distance': weighted_model_find_beta}
 
     if algorithm in algs:
@@ -274,42 +285,124 @@ def weighted_model_find_beta2(data, model_class, model_parameters):
     return s, beta
 
 
+def weighted_model_find_beta5(data, model_class, model_parameters):
+    beta = 1e6
+    s = weighted_modeling(data, model_class, model_parameters, beta, n_init=1)
+    n = s.weights.shape[0]
+    u = ones(n) / n
+    uni_s = model_class(data, u, model_parameters)
+    l = uni_s.squaredLosses()
+    beta = uni_s.weights.dot(l)
+    w = weightsForLosses(l, beta * n)
+    s = model_class(data, w, modelParameters=model_parameters)
+    s = weighted_modeling(data, model_class, model_parameters, beta)
+    return s, beta
+
+
 def weighted_model_find_beta3(data, model_class, model_parameters):
     beta = 1e6
     s = weighted_modeling(data, model_class, model_parameters, beta)
     n = s.weights.shape[0]
     u = ones(n) / n
     s = model_class(data, u, model_parameters)
-    typ_loss = np.percentile(s.squaredLosses(), 68)
+    typ_loss = stable_percentile_loss(s)
     old_beta = None
     # Try to use lower beta
     while typ_loss < beta:
         old_beta = beta
         beta = typ_loss
         s = weighted_modeling(data, model_class, model_parameters, beta)
-        typ_loss = np.percentile(s.squaredLosses(), 68)
+        typ_loss = stable_percentile_loss(s)
 
     # Last change didn't improve things, go back once
     s = weighted_modeling(data, model_class, model_parameters, old_beta)
     return s, old_beta
 
 
-def weighted_modeling(data, model_class, model_parameters, beta, n_init=10):
-    best_joint_loss = inf
+def stable_percentile_loss(s):
+    return np.percentile(s.squaredLosses(), 68)
+
+
+def weighted_model_find_beta4(data, model_class, model_parameters):
+    beta = 1e6
+    w = initial_weights(model_class, model_parameters, data, beta)
+    n = w.shape[0]
+    u = ones_like(w)
+    s = model_class(data, u, model_parameters)
+    typ_loss = stable_percentile_loss(s)
+    beta = typ_loss
+    w = initial_weights(model_class, model_parameters, data, beta)
+    s = model_class(data, w, modelParameters=model_parameters)
+    old_beta = inf
+    # Try to use lower beta
+    while typ_loss < old_beta:
+        for _ in range(2):
+            old_beta = beta
+            old_s = s
+            w = weightsForLosses(s.squaredLosses(), beta * n)
+            s = model_class(data, w, modelParameters=model_parameters)
+        typ_loss = stable_percentile_loss(s)
+        beta = typ_loss
+
+    # Last change didn't improve things, go back once
+    return old_s, old_beta
+
+
+def initial_weights(model_class, model_parameters, data, beta):
+    L = model_class.randomModelLosses(data, 1, model_parameters)
+    w = weightsForLosses(L[0, :], beta * L.shape[1])
+    return w
+
+
+def discrete_weights_from_losses(losses, gamma):
+    level = percentile(losses, gamma * 100.)
+    return (losses < level) * 1.
+
+
+def discrete_initial_weights(model_class, model_parameters, data, gamma):
+    beta = 1.
+    cw = initial_weights(model_class, model_parameters, data, beta)
+    while((abs(cw)<10**-5).any()):
+        beta *= 2.
+        cw = initial_weights(model_class, model_parameters, data, beta)
+    return discrete_weights_from_losses(-cw, gamma)
+
+
+def least_trimmed_squares(data, model_class, model_parameters, gamma, n_init=10):
+    best_trimmed_loss = inf
     best_state = None
     for t in range(n_init):
-        L = model_class.randomModelLosses(data, 1, model_parameters)
-        n, samples = L.shape
-        alpha = beta * samples
-        w = weightsForLosses(L[0, :], alpha)
-        w_old = zeros(samples)
+        w = initial_weights(model_class, model_parameters, data, beta)
+        # Discretize w to {0,1}
+        alpha = beta * w.shape[0]
+        w_old = zeros_like(w)
         s = None
         while not allclose(w, w_old):
             w_old = w
             s = model_class(data, w, modelParameters=model_parameters)
             w = weightsForLosses(s.squaredLosses(), alpha)
         L = s.squaredLosses()
-        joint_loss = penalizedMultipleWeightedLoss2(L[newaxis, :], w[newaxis, :], beta * n)
+        joint_loss = penalizedMultipleWeightedLoss2(L[newaxis, :], w[newaxis, :], alpha)
+        if best_joint_loss > joint_loss:
+            best_joint_loss = joint_loss
+            best_state = s
+    return best_state
+
+
+def weighted_modeling(data, model_class, model_parameters, beta, n_init=10):
+    best_joint_loss = inf
+    best_state = None
+    for t in range(n_init):
+        w = initial_weights(model_class, model_parameters, data, beta)
+        alpha = beta * w.shape[0]
+        w_old = zeros_like(w)
+        s = None
+        while not allclose(w, w_old):
+            w_old = w
+            s = model_class(data, w, modelParameters=model_parameters)
+            w = weightsForLosses(s.squaredLosses(), alpha)
+        L = s.squaredLosses()
+        joint_loss = penalizedMultipleWeightedLoss2(L[newaxis, :], w[newaxis, :], alpha)
         if best_joint_loss > joint_loss:
             best_joint_loss = joint_loss
             best_state = s
@@ -390,7 +483,8 @@ def location_estimation_experiment_results(d, noise_proportions, noise_offsets):
         return data_point_per_column.mean(axis=1)
 
     return experiment_matrix_results(make_task, noise_proportions, noise_offsets,
-                                     [(l1regularized_correction, "l1 reg. data adj."),
+                                     [
                                      (weighted, "RW loss."),
+                                     (l1regularized_correction, "l1 reg. data adj."),
                                      (regular, "std. averaging.")],
                                      score)
