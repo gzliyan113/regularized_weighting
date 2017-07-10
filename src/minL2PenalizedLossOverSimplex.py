@@ -1360,5 +1360,3 @@ def gOfTsJVsRest(L, alpha, ts, eta, j, lambda_all_but_j):
     lambda2 = maximum(lambda_all_but_j, lj)
     v = vmin(alpha, lambda2)
     return alpha * (norm(u - v) ** 2) - lambda2.dot(v) + eta.dot(ts)
-
-
