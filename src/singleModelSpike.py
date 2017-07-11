@@ -2,6 +2,7 @@ from numpy import logical_not, sqrt, ones, logspace, inf, newaxis, log2, eye, di
 from numpy.linalg import norm, svd
 from numpy.random import randn
 import numpy as np
+import time
 
 from random import sample
 from math import floor, log10, ceil
@@ -38,15 +39,24 @@ def experiment_matrix_results(make_data, row_param_values, col_param_values, met
     n_cols = col_param_values.shape[0]
     n_rows = row_param_values.shape[0]
     result_matrices = [ones((n_rows, n_cols)) * inf for _ in methods]
+    method_names = [n for (m, n) in methods]
+    me_runtime={}
+    for name in method_names:
+        me_runtime[name]=0
+
     for ip, noise_prop in enumerate(col_param_values):
         for io, offset in enumerate(row_param_values):
             print("."),
             data, gt = make_data(offset, noise_prop)
-            for i, (m, _) in enumerate(methods):
+            for i, (m, n) in enumerate(methods):
+                start_time=time.time()
                 estimate = m(data)
+                me_runtime[n]+=(time.time()-start_time)
                 result_matrices[i][io, ip] = summarize(estimate, gt)
         print(".")
-    method_names = [n for (m, n) in methods]
+    # for name in method_names:
+    #     me_runtime[name]/=(len(row_param_values)*len(col_param_values))
+    print me_runtime
     return result_matrices, method_names
 
 
