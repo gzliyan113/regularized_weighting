@@ -1,7 +1,7 @@
+from numpy import hstack, ones, array
+from cvxopt import matrix, spdiag
 from cvxopt.coneprog import coneqp
 from cvxopt.solvers import options
-from cvxopt import matrix, spdiag
-from numpy import hstack, ones, array
 
 
 def proximalIteration(y, gamma, A, Z, b):

@@ -6,50 +6,50 @@ from numpy.core.umath import sqrt
 __author__ = 'danielv'
 
 
-try:
-    from cvxoptCuttingPlane import proximalIteration
-    def proximalCuttingPlaneStream(f, g, x0, lowerBound=None, stepSize=1.):
-        n = x0.shape[0]
-        xk = yk = ykn = x0
-        bko = f(x0)
-        bestLowerBound = -inf if lowerBound is None else lowerBound
-        if lowerBound is None:
-            A, Z, b = zeros((n, 0)), zeros((n, 0)), zeros(0)
-            #A,Z,b = zeros((n,1)),zeros((n,1)),array([-10e12])
+# try:
+from cvxoptCuttingPlane import proximalIteration
+def proximalCuttingPlaneStream(f, g, x0, lowerBound=None, stepSize=1.):
+    n = x0.shape[0]
+    xk = yk = ykn = x0
+    bko = f(x0)
+    bestLowerBound = -inf if lowerBound is None else lowerBound
+    if lowerBound is None:
+        A, Z, b = zeros((n, 0)), zeros((n, 0)), zeros(0)
+        #A,Z,b = zeros((n,1)),zeros((n,1)),array([-10e12])
+    else:
+        A, Z, b = zeros((n, 1)), zeros((n, 1)), array([lowerBound])
+
+    while (True):
+        newLowerBound = yield yk
+        # If a lower bound is added or improved by client, update the constraints.
+        if (not (newLowerBound is None)):
+            if isneginf(bestLowerBound):
+                A = hstack((zeros((n, 1)), A))
+                Z = hstack((zeros((n, 1)), Z))
+                b = hstack((newLowerBound, b))
+            if newLowerBound > bestLowerBound:
+                bestLowerBound = newLowerBound
+            b[0] = bestLowerBound
+            # Compute a new cutting plane through xk.
+        ak = g(xk)
+        zk = xk
+        bk = f(xk)
+        if bk < bko: # Serious step: next turn we'll change the reference point.
+            ykn = xk
+            bko = bk
+            stepSize = stepSize * 2
         else:
-            A, Z, b = zeros((n, 1)), zeros((n, 1)), array([lowerBound])
+            stepSize = stepSize / 2
+        ''' Update function approximation (currently grows without bound).'''
+        A = hstack((A, ak.reshape(n, 1)))
+        Z = hstack((Z, zk.reshape(n, 1)))
+        b = hstack((b, array([bk])))
 
-        while (True):
-            newLowerBound = yield yk
-            # If a lower bound is added or improved by client, update the constraints.
-            if (not (newLowerBound is None)):
-                if isneginf(bestLowerBound):
-                    A = hstack((zeros((n, 1)), A))
-                    Z = hstack((zeros((n, 1)), Z))
-                    b = hstack((newLowerBound, b))
-                if newLowerBound > bestLowerBound:
-                    bestLowerBound = newLowerBound
-                b[0] = bestLowerBound
-                # Compute a new cutting plane through xk.
-            ak = g(xk)
-            zk = xk
-            bk = f(xk)
-            if bk < bko: # Serious step: next turn we'll change the reference point.
-                ykn = xk
-                bko = bk
-                stepSize = stepSize * 2
-            else:
-                stepSize = stepSize / 2
-            ''' Update function approximation (currently grows without bound).'''
-            A = hstack((A, ak.reshape(n, 1)))
-            Z = hstack((Z, zk.reshape(n, 1)))
-            b = hstack((b, array([bk])))
-
-            xk = proximalIteration(yk, 1. / stepSize, A, Z, b)
-            #xk = proximalIteration(yk, 1. / (k + 1), A, Z, b)
-            yk = ykn
-except ImportError:
-    pass
+        xk = proximalIteration(yk, 1. / stepSize, A, Z, b)
+        #xk = proximalIteration(yk, 1. / (k + 1), A, Z, b)
+        yk = ykn
+# except ImportError:
+#     pass
 
 def sgdStream(gradf_t, w0, stepsizes):
     w = w0
@@ -57,7 +57,7 @@ def sgdStream(gradf_t, w0, stepsizes):
     for alpha, grad in izip(stepsizes, gradf_t):
         yield w
         w = w - alpha * grad(w)
-        
+
 
 def averageStream(stream):
     aw = stream.next()
@@ -66,7 +66,7 @@ def averageStream(stream):
         aw = (w + aw * (n-1)) / float(n)
         yield aw
 
-        
+
 def averageLateWeightingStream(stream):
     aw = stream.next()
     yield aw

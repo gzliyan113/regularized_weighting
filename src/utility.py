@@ -11,6 +11,10 @@ from itertools import count, izip, islice
 from numpy.core.multiarray import count_nonzero
 from minimize import fastGradientProjectionStream
 
+import pyximport
+pyximport.install(setup_args={"script_args":["--compiler=mingw32"],
+                              "include_dirs":numpy.get_include()},
+                  reload_support=True)
 # noinspection PyUnresolvedReferences
 from optimized_rw_core import projCore, make_positive
 

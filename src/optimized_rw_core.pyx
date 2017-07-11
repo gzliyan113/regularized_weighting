@@ -107,5 +107,3 @@ def update_win_lam(np.ndarray[DTYPE_t, ndim=1] lam_tu,
             wr = win_r[i]
             win_tu[i] = wr
             lam_tu[i] = lr
-
-
